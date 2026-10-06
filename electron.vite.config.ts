@@ -19,6 +19,9 @@ export default defineConfig(({ mode }) => ({
     build: {
       rollupOptions: {
         input: 'src/backend/main.ts',
+        // Optional native addons of `ws` (pulled in by @xhayper/discord-rpc).
+        // `ws` requires these in a try/catch, but Vite's dev-mode stub throws
+        external: ['bufferutil', 'utf-8-validate'],
         output: {
           chunkFileNames: `chunks/[name].js`,
           assetFileNames: `chunks/[name].[ext]`
