@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import classNames from 'classnames'
+import { isImageLoaded, markImageLoaded } from 'frontend/nk/loadedImages' // nk: #4
 
 interface CachedImageProps {
   src: string
@@ -15,11 +16,11 @@ const CachedImage = (props: Props) => {
   const [useCache, setUseCache] = useState(
     props.src?.startsWith('http') || false
   )
-  const [loaded, setLoaded] = useState(false)
+  const [loaded, setLoaded] = useState(() => isImageLoaded(props.src)) // nk: #4
   const [useFallback, setUseFallback] = useState(false)
 
   useEffect(() => {
-    setLoaded(false)
+    setLoaded(isImageLoaded(props.src)) // nk: #4 no fade replay
     setUseFallback(false)
     setUseCache(props.src?.startsWith('http') || false)
   }, [props.src])
@@ -40,6 +41,7 @@ const CachedImage = (props: Props) => {
 
   const handleLoad = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     setLoaded(true)
+    if (!useFallback) markImageLoaded(props.src) // nk: #4
     props.onLoad?.(e)
   }
 

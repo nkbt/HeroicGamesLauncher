@@ -23,8 +23,10 @@ import { InstallGameWrapper } from './screens/Library/components/InstallModal'
 import { SettingsModalWrapper } from './screens/Settings/components/SettingsModal'
 import AnalyticsDialog from './screens/Settings/components/AnalyticsDialog'
 import KeepAliveLibrary from './nk/keepAliveLibrary/KeepAliveLibrary' // nk: #6
+import { useLibraryImagePrefetch } from './nk/libraryImages/useLibraryImagePrefetch' // nk: #4
 
 function Root() {
+  useLibraryImagePrefetch() // nk: #4
   const {
     isRTL,
     isFullscreen,

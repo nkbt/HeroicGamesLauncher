@@ -67,6 +67,7 @@ const ConsoleCard = forwardRef<HTMLButtonElement, Props>(function ConsoleCard(
         src={getImageFormatting(game.art_square, game.runner) || fallBackImage}
         alt={game.title}
         className="consoleCardArt"
+        loading="eager" // nk: #4
       />
       {needsUpdate && !showStatus && (
         <span className="consoleCardBadge">

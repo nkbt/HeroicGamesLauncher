@@ -53,6 +53,7 @@ import {
 } from '@mui/icons-material'
 import EditGameDialog from 'frontend/components/UI/EditGameDialog'
 import { openInstallGameModal } from 'frontend/state/InstallGameModal'
+import { useFollowedState, useStatusTransition } from 'frontend/nk/libraryCards' // nk: #4
 
 interface Card {
   buttonClick: () => void
@@ -75,25 +76,7 @@ const GameCard = ({
   gameInfo: gameInfoFromProps,
   dataTour
 }: Card) => {
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    // render an empty div until the card enters the viewport
-    // check GameList for the other side of this detection
-    const callback = (e: CustomEvent<{ appNames: string[] }>) => {
-      if (e.detail.appNames.includes(gameInfoFromProps.app_name)) {
-        setVisible(true)
-      }
-    }
-
-    window.addEventListener('visible-cards', callback)
-
-    return () => {
-      window.removeEventListener('visible-cards', callback)
-    }
-  }, [])
-
-  const [gameInfo, setGameInfo] = useState<GameInfo>(gameInfoFromProps)
+  const [gameInfo, setGameInfo] = useFollowedState(gameInfoFromProps) // nk: #4
   const [showUninstallModal, setShowUninstallModal] = useState(false)
   const [isLaunching, setIsLaunching] = useState(false)
 
@@ -143,8 +126,10 @@ const GameCard = ({
 
   const isBrowserGame = gameInfo.install.platform === 'Browser'
 
+  const nkIsStatusTransition = useStatusTransition(status) // nk: #4
   useEffect(() => {
     setIsLaunching(false)
+    if (!nkIsStatusTransition()) return // nk: #4 no IPC on mount
     const updateGameInfo = async () => {
       const newInfo = await getGameInfo(appName, runner)
       if (newInfo) {
@@ -442,17 +427,6 @@ const GameCard = ({
   const showUpdateButton =
     hasUpdate && !isUpdating && !isQueued && !notAvailable
 
-  if (!visible) {
-    return (
-      <div
-        className={wrapperClasses}
-        data-app-name={appName}
-        data-invisible={true}
-        data-tour={dataTour}
-      ></div>
-    )
-  }
-
   const showSettingsButton = isInstalled && !isUninstalling && !isBrowserGame
   const showUpdateBadge =
     hasUpdate && !isUpdating && !isQueued && activeController
@@ -490,12 +464,15 @@ const GameCard = ({
             {justPlayed ? (
               <CachedImage
                 src={art_cover || fallBackImage}
+                loading="eager" // nk: #4
                 className="justPlayedImg"
                 alt={title}
               />
             ) : (
               <CachedImage
                 src={getImageFormatting(cover, runner)}
+                fallback={fallBackImage} // nk: #4
+                loading="eager" // nk: #4
                 className={imgClasses}
                 alt="cover"
               />
@@ -504,6 +481,7 @@ const GameCard = ({
               <CachedImage
                 alt="logo"
                 src={`${logo}?h=400&resize=1&w=300`}
+                loading="eager" // nk: #4
                 className={logoClasses}
               />
             )}

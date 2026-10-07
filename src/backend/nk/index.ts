@@ -8,6 +8,7 @@
 // from here instead of adding lines to main.ts.
 import { logWarning, LogPrefix } from 'backend/logger'
 import { initLibraryDates } from './libraryDates'
+import { initImageCache } from './imageCache'
 
 let initialized = false
 
@@ -15,14 +16,21 @@ export function initNk() {
   if (initialized) return
   initialized = true
 
-  const steps: Array<[string, () => void]> = [
-    ['library dates (#3)', initLibraryDates]
-  ]
-  for (const [name, init] of steps) {
-    try {
-      init()
-    } catch (error) {
-      logWarning(['[nk] init failed:', name, String(error)], LogPrefix.Backend)
-    }
+  try {
+    initLibraryDates()
+  } catch (error) {
+    logWarning(
+      ['[nk] init failed: library dates (#3)', String(error)],
+      LogPrefix.Backend
+    )
+  }
+
+  try {
+    initImageCache()
+  } catch (error) {
+    logWarning(
+      ['[nk] init failed: image cache (#4)', String(error)],
+      LogPrefix.Backend
+    )
   }
 }

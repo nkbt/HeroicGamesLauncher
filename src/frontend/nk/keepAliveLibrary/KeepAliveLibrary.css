@@ -7,3 +7,19 @@
 [data-keepalive='library'][data-restored] .gameCard {
   animation: none;
 }
+
+/* nk: #4 - every card is rendered eagerly, so ~1000 cards mount and ~1000
+   covers finish loading within a few frames. Each one started its own CSS
+   animation (card fade-in) or transition (cover opacity fade), and Blink
+   starts pending animations in one main-thread pass whose cost grows with
+   their count: measured as multi-second frames right after the Library
+   mounted. Cards and covers in the Library grid therefore appear without the
+   fade. Re-check after upstream merges: `fade-in` in GameCard/index.css and
+   `img.loading` / `img.loaded` in App.css. */
+[data-keepalive='library'] .gameCard {
+  animation: none;
+}
+[data-keepalive='library'] .gameCard img.loaded,
+[data-keepalive='library'] .gameListItem img.loaded {
+  transition: none;
+}

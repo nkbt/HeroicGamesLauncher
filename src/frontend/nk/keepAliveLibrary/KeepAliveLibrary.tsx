@@ -14,18 +14,22 @@ import './KeepAliveLibrary.css'
 import {
   type Context,
   createContext,
+  startTransition,
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState
 } from 'react'
 import {
   useLocation,
   UNSAFE_LocationContext,
+  UNSAFE_NavigationContext,
   UNSAFE_RouteContext
 } from 'react-router-dom'
 import Library from 'frontend/screens/Library'
+import ContextProvider from 'frontend/state/ContextProvider'
 import { LIBRARY_TOUR_ID } from 'frontend/screens/Library/components/LibraryTour'
 import { useTour } from 'frontend/state/TourContext'
 import { createLibraryViewKeeper } from './libraryViewKeeper'
@@ -38,6 +42,11 @@ import {
   type RouteContextValue,
   shouldFollowLocation
 } from './routerIsolation'
+import {
+  isNavigationContextValue,
+  withMemoizedCreateHref
+} from './navigationIsolation'
+import { structuralShare } from './structuralShare'
 
 const SCROLL_POSITION_KEY = 'scrollPosition' // upstream Library's key
 
@@ -107,6 +116,45 @@ function useIsolatedRouterContexts(active: boolean): {
   return { route: route.current, location: location.current }
 }
 
+/**
+ * #4: the GlobalState context value given to the kept Library.
+ * GlobalState passes a new context object on every setState, which
+ * re-renders every (eagerly rendered) card: several hundred ms in the dev
+ * build. While the Library is hidden it keeps the last value it saw (no
+ * re-render at all). While it is shown it follows the live value in a
+ * transition: React renders the cards in interruptible slices instead of one
+ * long task, and the return to the Library paints with the held value before
+ * catching up. The live value is structurally shared with the shown one
+ * first: unchanged games keep their GameInfo objects after a library refresh,
+ * and a value that is deep-equal to the shown one causes no render at all.
+ */
+function useGatedGlobalState(active: boolean) {
+  const live = useContext(ContextProvider)
+  const [shown, setShown] = useState(live)
+  const lastLive = useRef(live)
+  useEffect(() => {
+    if (!active || lastLive.current === live) return
+    lastLive.current = live
+    const next = structuralShare(shown, live)
+    if (next !== shown) startTransition(() => setShown(next))
+  }, [active, live, shown])
+  return shown
+}
+
+/** #4: NavigationContext with a cached `createHref` (navigationIsolation.ts) */
+function useMemoizedNavigation() {
+  const live = useContext<unknown>(
+    (UNSAFE_NavigationContext as Context<unknown> | undefined) ?? MissingContext
+  )
+  return useMemo(() => {
+    if (!UNSAFE_NavigationContext || !isNavigationContextValue(live)) {
+      return null
+    }
+    const base = document.querySelector('base')?.getAttribute('href')
+    return withMemoizedCreateHref(live, !!base)
+  }, [live])
+}
+
 function storeScrollPosition(value: number) {
   try {
     window.localStorage.setItem(SCROLL_POSITION_KEY, String(value))
@@ -126,6 +174,11 @@ export default function KeepAliveLibrary() {
   const containerRef = useRef<HTMLDivElement>(null)
   const lastFocused = useRef<HTMLElement | null>(null)
   const isolated = useIsolatedRouterContexts(active)
+  const globalState = useGatedGlobalState(active)
+  const navigation = useMemoizedNavigation()
+  // the same element every render: Library re-renders only through the
+  // contexts it consumes (all of them gated here)
+  const library = useMemo(() => <Library />, [])
 
   // Body scroll listener. Registered in the same commit as Library's own
   // `storeScrollPosition` listener but after it (child layout effects run
@@ -187,7 +240,17 @@ export default function KeepAliveLibrary() {
 
   if (!mounted) return null
 
-  const library = <Library />
+  const gatedLibrary = (
+    <ContextProvider.Provider value={globalState}>
+      {navigation ? (
+        <UNSAFE_NavigationContext.Provider value={navigation}>
+          {library}
+        </UNSAFE_NavigationContext.Provider>
+      ) : (
+        library
+      )}
+    </ContextProvider.Provider>
+  )
   return (
     <div
       ref={containerRef}
@@ -200,11 +263,11 @@ export default function KeepAliveLibrary() {
       {routerContexts && isolated ? (
         <routerContexts.RouteContext.Provider value={isolated.route}>
           <routerContexts.LocationContext.Provider value={isolated.location}>
-            {library}
+            {gatedLibrary}
           </routerContexts.LocationContext.Provider>
         </routerContexts.RouteContext.Provider>
       ) : (
-        library
+        gatedLibrary
       )}
     </div>
   )
