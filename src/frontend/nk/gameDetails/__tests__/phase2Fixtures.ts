@@ -32,6 +32,7 @@ export function phase2Fixture(persistence = new MemoryPersistence()) {
       Promise.resolve({ pcgamingwiki: { steamID: '123' } } as WikiInfo)
     ),
     getAchievements: jest.fn(() => Promise.resolve([])),
+    getAchievementsForAccount: jest.fn(() => Promise.resolve([])),
     requestGameSettings: jest.fn(() =>
       Promise.resolve({ wineVersion: 'synthetic' } as unknown as GameSettings)
     ),
@@ -54,6 +55,7 @@ export function phase2Fixture(persistence = new MemoryPersistence()) {
     } as InstallInfo)
   )
   const gameDetailsApi = createGameDetailsApi(store, {
+    getAccountId: () => 'synthetic-account',
     ipc: () => ipc,
     scheduler,
     getInstallInfo,

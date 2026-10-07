@@ -122,6 +122,7 @@ function setup(appName: string) {
       Promise.resolve({ pcgamingwiki: { steamID: '123' } } as WikiInfo)
     ),
     getAchievements: jest.fn(() => Promise.resolve([])),
+    getAchievementsForAccount: jest.fn(() => Promise.resolve([])),
     requestGameSettings: jest.fn(() =>
       Promise.resolve({ wineVersion: 'synthetic' } as unknown as GameSettings)
     ),
@@ -131,6 +132,7 @@ function setup(appName: string) {
     clearAchievementCache: jest.fn()
   }
   const gameDetailsApi = createGameDetailsApi(gameDetailsStore, {
+    getAccountId: () => 'synthetic-account',
     ipc: () => ipc,
     scheduler: gameDetailsScheduler,
     getInstallInfo: () =>

@@ -17,7 +17,9 @@ function setup(
     requestGameSettings: jest.fn(() =>
       Promise.resolve({ wineVersion: 'updated' })
     ),
-    getAchievements: jest.fn(() => Promise.resolve([{ name: 'new' }])),
+    getAchievementsForAccount: jest.fn(() =>
+      Promise.resolve([{ name: 'new' }])
+    ),
     clearAchievementCache: jest.fn()
   }
   const getInstallInfo = jest.fn(() =>
@@ -26,6 +28,7 @@ function setup(
     })
   )
   const gameDetailsApi = createGameDetailsApi(store, {
+    getAccountId: () => 'synthetic-account',
     ipc: () => ipc as unknown as DetailsIpc,
     getInstallInfo: getInstallInfo as never,
     platform: 'linux',
@@ -54,7 +57,12 @@ function setup(
     })
     store.setSlot('gog:1', 'launchOptions', [{ name: 'old' }])
     store.setSlot('settings:1', 'settings', { wineVersion: 'old' })
-    store.setSlot('gog:1', 'achievements', [{ name: 'old' }])
+    store.setSlot(
+      'gog:1',
+      'achievements',
+      [{ name: 'old' }],
+      'synthetic-account'
+    )
     store.setSlot('gog:2', 'installInfo@Windows', { untouched: true })
   }
   return {
@@ -121,7 +129,7 @@ test('a play session on a closed page refreshes achievements and settings', asyn
     scope: 'achievements'
   })
   expect(t.ipc.clearAchievementCache).not.toHaveBeenCalled()
-  expect(t.ipc.getAchievements).toHaveBeenCalledTimes(1)
+  expect(t.ipc.getAchievementsForAccount).toHaveBeenCalledTimes(1)
   expect(t.store.getSlot('gog:1', 'achievements')?.data).toEqual([
     { name: 'new' }
   ])
@@ -181,7 +189,7 @@ test('offline play completion persists its targeted work and reconnect refreshes
   expect(t.store.getEntry('gog:1')?.pendingPlay).toBe(true)
   t.connectivity.online = true
   await t.events.reconnect()
-  expect(t.ipc.getAchievements).toHaveBeenCalledTimes(1)
+  expect(t.ipc.getAchievementsForAccount).toHaveBeenCalledTimes(1)
   expect(t.store.getEntry('gog:1')?.pendingPlay).toBe(false)
 })
 
@@ -195,10 +203,10 @@ test('play completion holds refill until targeted backend invalidation finishes'
   t.invalidateGameDetailsCaches.mockReturnValueOnce(delayed.promise)
   const completion = t.events.played('1', 'gog')
   await Promise.resolve()
-  expect(t.ipc.getAchievements).not.toHaveBeenCalled()
+  expect(t.ipc.getAchievementsForAccount).not.toHaveBeenCalled()
   delayed.resolve({ dropped: [], failed: [], art: { refreshed: 0, failed: 0 } })
   await completion
-  expect(t.ipc.getAchievements).toHaveBeenCalledTimes(1)
+  expect(t.ipc.getAchievementsForAccount).toHaveBeenCalledTimes(1)
 })
 
 test('pending offline work survives renderer persistence and only affected slots refill after restart', async () => {
@@ -212,6 +220,7 @@ test('pending offline work survives renderer persistence and only affected slots
   })
   await restarted.hydrate()
   const gameDetailsApi = createGameDetailsApi(restarted, {
+    getAccountId: () => 'synthetic-account',
     ipc: () => t.ipc as unknown as DetailsIpc,
     getInstallInfo: t.getInstallInfo as never,
     platform: 'linux',
@@ -226,7 +235,7 @@ test('pending offline work survives renderer persistence and only affected slots
     isOnline: () => true
   })
   await events.reconnect()
-  expect(t.ipc.getAchievements).toHaveBeenCalledTimes(1)
+  expect(t.ipc.getAchievementsForAccount).toHaveBeenCalledTimes(1)
   expect(t.getInstallInfo).not.toHaveBeenCalled()
   expect(restarted.getEntry('gog:1')?.pendingPlay).toBe(false)
   await restarted.flush()
@@ -269,10 +278,10 @@ test('play completion before hydration retains offline work and reconciles persi
   })
   await completion
   expect(t.store.getEntry('gog:1')?.pendingPlay).toBe(true)
-  expect(t.ipc.getAchievements).not.toHaveBeenCalled()
+  expect(t.ipc.getAchievementsForAccount).not.toHaveBeenCalled()
   t.connectivity.online = true
   await t.events.reconnect()
-  expect(t.ipc.getAchievements).toHaveBeenCalledTimes(1)
+  expect(t.ipc.getAchievementsForAccount).toHaveBeenCalledTimes(1)
   expect(t.store.getSlot('gog:1', 'achievements')?.data).toEqual([
     { name: 'new' }
   ])
@@ -289,7 +298,7 @@ test('removal while waiting for hydration fences the entire deferred event', asy
     'gog:1': { slots: { achievements: { data: [{ name: 'old' }] } } }
   })
   await completion
-  expect(t.ipc.getAchievements).not.toHaveBeenCalled()
+  expect(t.ipc.getAchievementsForAccount).not.toHaveBeenCalled()
   expect(t.store.getEntry('gog:1')).toBeUndefined()
 })
 
@@ -322,7 +331,7 @@ test('settings edit during play invalidation does not cancel achievement refill'
   t.store.setSlot('settings:1', 'settings', { wineVersion: 'edited' })
   delayed.resolve({ dropped: [], failed: [], art: { refreshed: 0, failed: 0 } })
   await completion
-  expect(t.ipc.getAchievements).toHaveBeenCalledTimes(1)
+  expect(t.ipc.getAchievementsForAccount).toHaveBeenCalledTimes(1)
   expect(t.ipc.requestGameSettings).not.toHaveBeenCalled()
   expect(t.store.getEntry('gog:1')?.pendingPlay).toBe(false)
 })

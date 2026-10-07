@@ -38,6 +38,7 @@ function setup() {
     getExtraInfo: jest.fn(() => Promise.resolve(extra)),
     getWikiGameInfo: jest.fn(() => Promise.resolve(wiki)),
     getAchievements: jest.fn(() => Promise.resolve([])),
+    getAchievementsForAccount: jest.fn(() => Promise.resolve([])),
     requestGameSettings: jest.fn(() => Promise.resolve({ wineVersion: 'w' })),
     getAnticheatInfo: jest.fn(() => Promise.resolve(undefined)),
     getKnownFixes: jest.fn(() => Promise.resolve(undefined)),
@@ -50,6 +51,7 @@ function setup() {
     })
   )
   const gameDetailsApi = createGameDetailsApi(store, {
+    getAccountId: () => 'synthetic-account',
     ipc: () => ipc as unknown as DetailsIpc,
     getInstallInfo: installInfo as never,
     platform: 'linux',

@@ -82,6 +82,7 @@ test('route-independent reset waits for pending persistence and prevents writes 
     Promise.resolve({ wineVersion: 'default' })
   )
   const gameDetailsApi = createGameDetailsApi(restarted, {
+    getAccountId: () => 'synthetic-account',
     ipc: () => ({ requestGameSettings }) as unknown as DetailsIpc,
     getInstallInfo: () => Promise.resolve(null),
     platform: 'linux',

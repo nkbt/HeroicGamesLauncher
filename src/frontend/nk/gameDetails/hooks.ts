@@ -41,6 +41,7 @@ import {
 } from './instance'
 import { installPlatformOf, isNotInstallable, wikiForGamePage } from './logic'
 import { refreshState } from './refresh'
+import { getAccountId } from './account'
 import { warmDetailsArt } from './art'
 import { peekStatus, subscribeStatus } from './statusMemo'
 import {
@@ -61,20 +62,25 @@ function useCachedState<T>(
   key: DetailsKey | null,
   slot: SlotId,
   fromSlot: (data: unknown) => T | undefined,
-  fallback: () => T
+  fallback: () => T,
+  accountId?: string
 ): [T, Dispatch<SetStateAction<T>>] {
   const fromSlotRef = useRef(fromSlot)
   fromSlotRef.current = fromSlot
   const seenRef = useRef(key ? gameDetailsStore.getSlot(key, slot) : undefined)
-  const selection = useRef({ key, slot })
+  const selection = useRef({ key, slot, accountId })
   const [value, setValue] = useState<T>(() => {
     const cached = seenRef.current
     const seeded = cached ? fromSlot(cached.data) : undefined
     return seeded === undefined ? fallback() : seeded
   })
 
-  if (selection.current.key !== key || selection.current.slot !== slot) {
-    selection.current = { key, slot }
+  if (
+    selection.current.key !== key ||
+    selection.current.slot !== slot ||
+    selection.current.accountId !== accountId
+  ) {
+    selection.current = { key, slot, accountId }
     const cached = key ? gameDetailsStore.getSlot(key, slot) : undefined
     seenRef.current = cached
     const seeded = cached ? fromSlot(cached.data) : undefined
@@ -97,10 +103,14 @@ function useCachedState<T>(
 
   const selectedSetter = useCallback<Dispatch<SetStateAction<T>>>(
     (next) => {
-      if (selection.current.key === key && selection.current.slot === slot)
+      if (
+        selection.current.key === key &&
+        selection.current.slot === slot &&
+        selection.current.accountId === accountId
+      )
         setValue(next)
     },
-    [key, slot]
+    [key, slot, accountId]
   )
   return [value, selectedSetter]
 }
@@ -142,11 +152,20 @@ export function useExtraInfoState(gameInfo: GameInfo) {
 }
 
 export function useAchievementsState(runner: Runner, appName: string) {
+  useContext(ContextProvider)
+  const accountId = getAccountId(runner)
+  const key = detailsKey(runner, appName)
   return useCachedState<GameAchievement[]>(
-    detailsKey(runner, appName),
+    key,
     'achievements',
-    (data) => (data as GameAchievement[] | null) ?? [],
-    () => []
+    (data) =>
+      runner === 'gog' &&
+      (!accountId ||
+        gameDetailsStore.getSlot(key, 'achievements')?.accountId !== accountId)
+        ? []
+        : ((data as GameAchievement[] | null) ?? []),
+    () => [],
+    accountId ?? ''
   )
 }
 

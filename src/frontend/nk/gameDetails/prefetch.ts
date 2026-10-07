@@ -23,7 +23,11 @@ export function createDetailsPrefetch(
   let failed = 0
   function missing(gameInfo: GameInfo, slot: string, priority: 1 | 2) {
     const key = detailsKey(gameInfo.runner, gameInfo.app_name)
-    const id = `${key}|${slot}|${store.generation()}|${store.version(key)}`
+    const accountId =
+      slot === 'achievements' && gameInfo.runner === 'gog'
+        ? gameDetailsApi.getAccountId(gameInfo.runner)
+        : undefined
+    const id = `${key}|${slot}|${store.generation()}|${store.version(key)}${accountId ? `|${accountId}` : ''}`
     if (priority === 2 && attempted.has(id)) return false
     attempted.set(id, {})
     return true
@@ -39,7 +43,11 @@ export function createDetailsPrefetch(
     const options: FetchOptions = { priority }
     const work: Promise<unknown>[] = []
     function track(slot: string, request: Promise<unknown>) {
-      const id = `${key}|${slot}|${store.generation()}|${store.version(key)}`
+      const accountId =
+        slot === 'achievements' && gameInfo.runner === 'gog'
+          ? gameDetailsApi.getAccountId(gameInfo.runner)
+          : undefined
+      const id = `${key}|${slot}|${store.generation()}|${store.version(key)}${accountId ? `|${accountId}` : ''}`
       const owner = attempted.get(id)
       return request.catch((error: unknown) => {
         if (
@@ -118,8 +126,13 @@ export function createDetailsPrefetch(
           gameDetailsApi.getKnownFixes(appName, runner, options)
         )
       )
+    const accountId =
+      runner === 'gog' ? gameDetailsApi.getAccountId(runner) : undefined
+    const achievements = store.getSlot(key, 'achievements')
     if (
-      !store.getSlot(key, 'achievements') &&
+      (runner !== 'gog' || !!accountId) &&
+      (!achievements ||
+        (runner === 'gog' && achievements.accountId !== accountId)) &&
       missing(gameInfo, 'achievements', priority)
     )
       work.push(

@@ -72,6 +72,12 @@ export interface DetailsIpc {
     runner: Runner
   ) => Promise<KnownFixesInfo | null | undefined>
   getLaunchOptions: (appName: string, runner: Runner) => Promise<LaunchOption[]>
+  getAchievementsForAccount: (
+    appName: string,
+    runner: Runner,
+    accountId: string,
+    lang?: string
+  ) => Promise<GameAchievement[]>
   clearAchievementCache: (appName: string) => void
 }
 
@@ -89,6 +95,7 @@ export interface ApiDeps {
   getInstallInfoBackground?: ApiDeps['getInstallInfo']
   platform: string
   getLanguage: () => string
+  getAccountId: (runner: Runner) => string | undefined
   isOnline: () => boolean
   /** the game's current library list entry, if the library is loaded */
   getLibraryGame: (runner: Runner, appName: string) => GameInfo | undefined
@@ -119,6 +126,7 @@ interface ReadSpec<T> {
   appName: string
   fetch: (options: FetchOptions) => Promise<T>
   options: FetchOptions
+  accountId?: string
   /** a result that is not stored and never replaces a filled slot */
   isFailure?: (value: T, previous: T | null | undefined) => boolean
   /** forced fetches reject on failure-shaped results (default true) */
@@ -280,12 +288,25 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
     })
   }
 
+  function previous<T>(spec: ReadSpec<T>) {
+    const slot = store.getSlot<T>(spec.key, spec.slot)
+    return spec.accountId && slot?.accountId !== spec.accountId
+      ? undefined
+      : slot
+  }
+  function accountCurrent<T>(spec: ReadSpec<T>) {
+    return (
+      !spec.accountId ||
+      (spec.runner !== undefined &&
+        deps.getAccountId(spec.runner) === spec.accountId)
+    )
+  }
   function fetchInto<T>(spec: ReadSpec<T>): Promise<T | null> {
     const epoch = epochOf(spec.key, spec.slot)
     const generation = store.generation()
     const version = store.version(spec.key)
     const force = !!spec.options.force
-    const id = `${spec.key}|${spec.slot}|${generation}|${version}|${epoch}|${force}`
+    const id = `${spec.key}|${spec.slot}|${generation}|${version}|${epoch}|${force}${spec.accountId ? `|${spec.accountId}` : ''}`
     const running = inflight.get(id)
     if (running && !deps.scheduler?.isCancelled(id)) {
       joinRequest(id, spec.options)
@@ -340,6 +361,7 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
       effective.priority = intent?.priority ?? effective.priority
       effective.backgroundRequested =
         intent?.backgroundRequested ?? effective.backgroundRequested
+      if (!accountCurrent(spec)) return [] as T
       if (
         intent?.cancelled ||
         store.generation() !== generation ||
@@ -347,7 +369,7 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
         epochOf(spec.key, spec.slot) !== epoch
       ) {
         if (!effective.backgroundRequested && spec.options.priority !== 1)
-          return store.getSlot<T>(spec.key, spec.slot)?.data ?? null
+          return previous(spec)?.data ?? null
         const error = new Error('Detail request cancelled before dispatch')
         error.name = 'DetailsRequestCancelled'
         throw error
@@ -361,6 +383,7 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
         const priority = effective.priority
         if (priority < 2 && lane === 'installInfoBackground') lane = 'cli'
         const fetch = async (lane: DetailsLane = 'local') => {
+          if (!accountCurrent(spec)) return [] as T
           if (
             store.generation() !== generation ||
             store.version(spec.key) !== version ||
@@ -369,7 +392,7 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
               spec.slot !== extraInfoSlot(deps.getLanguage()))
           ) {
             if (!effective.backgroundRequested && spec.options.priority !== 1)
-              return store.getSlot<T>(spec.key, spec.slot)?.data as T
+              return previous(spec)?.data as T
             const error = new Error('Detail request cancelled before dispatch')
             error.name = 'DetailsRequestCancelled'
             throw error
@@ -395,13 +418,15 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
             )
           : await fetch(lane)
       } catch (error) {
+        if (!accountCurrent(spec)) return [] as T
         if (error instanceof Error && error.name === 'DetailsRequestCancelled')
           throw error
-        const previous = store.getSlot<T>(spec.key, spec.slot)
-        if (previous && !force) return previous.data
+        const cached = previous(spec)
+        if (cached && !force) return cached.data
         throw error
       }
-      const previous = store.getSlot<T>(spec.key, spec.slot)
+      const cached = previous(spec)
+      if (!accountCurrent(spec)) return [] as T
       // a Refresh started meanwhile: its own fetch decides what is stored
       if (
         epochOf(spec.key, spec.slot) !== epoch ||
@@ -410,23 +435,21 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
         (isExtraInfoSlot(spec.slot) &&
           spec.slot !== extraInfoSlot(deps.getLanguage()))
       ) {
-        return previous ? previous.data : value
+        return cached ? cached.data : value
       }
-      if (spec.isFailure?.(value, previous?.data)) {
-        if (
-          force &&
-          (spec.failureRejects !== false || previous?.data != null)
-        ) {
+      if (spec.isFailure?.(value, cached?.data)) {
+        if (force && (spec.failureRejects !== false || cached?.data != null)) {
           throw new FailureShapedResult(spec.kind)
         }
-        return previous && previous.data != null ? previous.data : value
+        return cached && cached.data != null ? cached.data : value
       }
       return store.batchUpdates(
         () => {
           const stored =
-            previous && sameData(previous.data, value)
-              ? previous.data
-              : store.setSlot<T>(spec.key, spec.slot, value).data
+            cached && sameData(cached.data, value)
+              ? cached.data
+              : store.setSlot<T>(spec.key, spec.slot, value, spec.accountId)
+                  .data
           if (gameInfo)
             store.patchEntry(spec.key, (entry) =>
               entry.gameInfo === gameInfo ? entry : { ...entry, gameInfo }
@@ -450,7 +473,7 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
   }
 
   async function read<T>(spec: ReadSpec<T>): Promise<T | null> {
-    const cached = store.getSlot<T>(spec.key, spec.slot)
+    const cached = previous(spec)
     if (cached && !spec.options.force) return cached.data
     return fetchInto(spec)
   }
@@ -539,6 +562,7 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
   }
 
   return {
+    getAccountId: deps.getAccountId,
     getExtraInfo: async (
       appName: string,
       runner: Runner,
@@ -562,21 +586,31 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
       runner: Runner,
       lang?: string,
       options: FetchOptions = {}
-    ) =>
-      (await read<GameAchievement[]>({
+    ) => {
+      const accountId = runner === 'gog' ? deps.getAccountId(runner) : undefined
+      if (runner === 'gog' && !accountId) return []
+      const achievements = await read<GameAchievement[]>({
         kind: 'getAchievements',
         key: detailsKey(runner, appName),
         slot: 'achievements',
         runner,
         appName,
         options,
-        fetch: async () => deps.ipc().getAchievements(appName, runner, lang),
-        // achievements never disappear: an empty list after a non-empty one
-        // is a failed request; GOG returns an empty list offline
-        isFailure: (v, previous) =>
-          (v ?? []).length === 0 &&
-          (!!previous?.length || (runner === 'gog' && !deps.isOnline()))
-      })) ?? [],
+        accountId,
+        fetch: async () =>
+          accountId
+            ? deps
+                .ipc()
+                .getAchievementsForAccount(appName, runner, accountId, lang)
+            : deps.ipc().getAchievements(appName, runner, lang),
+        isFailure: (value, cached) =>
+          (value ?? []).length === 0 &&
+          (!!cached?.length || (runner === 'gog' && !deps.isOnline()))
+      })
+      return runner === 'gog' && deps.getAccountId(runner) !== accountId
+        ? []
+        : (achievements ?? [])
+    },
 
     getInstallInfo: async (
       appName: string,

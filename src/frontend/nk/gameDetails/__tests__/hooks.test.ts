@@ -1,7 +1,14 @@
+import { getAccountId } from '../account'
+jest.mock('../account', () => ({ getAccountId: jest.fn(() => undefined) }))
 import type { GameInfo, WikiInfo } from 'common/types'
 import { createHookRoot } from 'frontend/nk/test/hookRuntime'
 import { gameDetailsApi, gameDetailsStore } from '../instance'
-import { useExtraInfoState, useKnownFixes, useWikiInfoState } from '../hooks'
+import {
+  useExtraInfoState,
+  useKnownFixes,
+  useWikiInfoState,
+  useAchievementsState
+} from '../hooks'
 import { useRouteGameInfo } from '../route'
 import i18next from 'i18next'
 import { useParams, useLocation } from 'react-router-dom'
@@ -47,6 +54,10 @@ beforeEach(async () => {
   jest.mocked(gameDetailsApi.getKnownFixes).mockResolvedValue(null)
   jest.mocked(gameDetailsApi.getExtraInfo).mockResolvedValue(null)
   i18next.language = 'en'
+})
+
+afterEach(async () => {
+  await gameDetailsStore.flush()
 })
 
 test('first render uses stored wiki and later writes update the same mounted hook', async () => {
@@ -158,5 +169,42 @@ test('a delayed older-language request only fills its own slot after a newer lan
   expect(
     gameDetailsStore.getSlot('legendary:game-a', 'extraInfo@en')?.data
   ).toBe(english)
+  view.unmount()
+})
+
+test('achievement hook clears retained personal state on account switch, unknown identity and logout and fences stale setters', async () => {
+  jest.mocked(getAccountId).mockReturnValue('synthetic-A')
+  const old = [
+    { achievement_id: 'fabricated', date_unlocked: 'fabricated-date' }
+  ]
+  gameDetailsStore.setSlot(
+    'gog:shared-game',
+    'achievements',
+    old,
+    'synthetic-A'
+  )
+  const view = createHookRoot(() => useAchievementsState('gog', 'shared-game'))
+  view.render({})
+  expect(view.result.current[0]).toBe(old)
+  const oldSetter = view.result.current[1]
+  jest.mocked(getAccountId).mockReturnValue('synthetic-B')
+  view.render({})
+  expect(view.result.current[0]).toEqual([])
+  oldSetter(old as never)
+  await view.settle()
+  expect(view.result.current[0]).toEqual([])
+  const current = [{ achievement_id: 'fabricated-B', date_unlocked: null }]
+  gameDetailsStore.setSlot(
+    'gog:shared-game',
+    'achievements',
+    current,
+    'synthetic-B'
+  )
+  gameDetailsStore.notify()
+  await view.settle()
+  expect(view.result.current[0]).toBe(current)
+  jest.mocked(getAccountId).mockReturnValue(undefined)
+  view.render({})
+  expect(view.result.current[0]).toEqual([])
   view.unmount()
 })

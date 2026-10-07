@@ -27,6 +27,7 @@ export type SlotId =
 export interface Slot<T = unknown> {
   /** `null` is a cached "none" (distinct from a missing slot) */
   data: T | null
+  accountId?: string
 }
 
 /** Which library list fields a group of slots was fetched against. */

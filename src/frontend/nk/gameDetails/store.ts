@@ -181,10 +181,14 @@ export function createGameDetailsStore(
   function setSlot<T>(
     key: DetailsKey,
     slot: SlotId,
-    data: T | null | undefined
+    data: T | null | undefined,
+    accountId?: string
   ): Slot<T> {
     const prev = entries[key]
-    const value: Slot<T> = { data: data ?? null }
+    const value: Slot<T> = {
+      data: data ?? null,
+      ...(accountId ? { accountId } : {})
+    }
     writeEntries([[key, { ...prev, slots: { ...prev?.slots, [slot]: value } }]])
     return value
   }

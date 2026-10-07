@@ -1,3 +1,4 @@
+jest.mock('../account', () => ({ getAccountId: () => 'synthetic-account' }))
 jest.mock('i18next', () => ({ __esModule: true, default: { language: 'en' } }))
 import type { GameSettings } from 'common/types'
 import type { MemoryPersistence } from '../persistence'
@@ -284,11 +285,16 @@ async function languageCompletion(selectedBeforeCompletion: boolean) {
       storeUrl: 'https://store.example/language'
     } as import('common/types').ExtraInfo)
   )
-  window.api.getAchievements = jest.fn(() => Promise.resolve([]))
+  window.api.getAchievementsForAccount = jest.fn(() => Promise.resolve([]))
   t.gameDetailsStore.setSlot('gog:language-game', 'extraInfo@en', {
     storeUrl: 'https://store.example/en'
   })
-  t.gameDetailsStore.setSlot('gog:language-game', 'achievements', [])
+  t.gameDetailsStore.setSlot(
+    'gog:language-game',
+    'achievements',
+    [],
+    'synthetic-account'
+  )
   t.gameDetailsScheduler.update({ online: true })
   t.status({} as never, {
     appName: 'language-game',

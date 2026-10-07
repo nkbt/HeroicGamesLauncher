@@ -14,6 +14,10 @@ import {
   suppressMemoizedCaches,
   resumeMemoizedCaches
 } from '../cacheMemoization'
+import {
+  createAccountAchievements,
+  createAchievementAccountContext
+} from './accountAchievements'
 import { addHandler, addListener } from 'backend/ipc'
 import { logInfo, logWarning, LogPrefix } from 'backend/logger'
 import { isOnline } from 'backend/online_monitor'
@@ -23,8 +27,10 @@ import {
   umuStore,
   wikiGameInfoStore
 } from 'backend/wiki_game_info/electronStore'
+import { GOGUser } from 'backend/storeManagers/gog/user'
 import GOGGame from 'backend/storeManagers/gog/games'
 import {
+  configStore as gogConfigStore,
   achievementStore as gogAchievementStore,
   installInfoStore as gogInstallInfoStore
 } from 'backend/storeManagers/gog/electronStores'
@@ -38,7 +44,7 @@ import type {
   InvalidateGameDetailsRequest,
   InvalidateGameDetailsResult
 } from 'common/types/nk/gameDetails'
-import type { ExtraInfo, Runner, WikiInfo } from 'common/types'
+import type { ExtraInfo, Runner, WikiInfo, GameAchievement } from 'common/types'
 import { refreshImages } from '../imageCache'
 import { guardStoreSet, isEmptyWikiInfo, replaceIpcHandler } from './wikiInfo'
 import { wrapGogGetExtraInfo } from './gogExtraInfoCache'
@@ -182,12 +188,91 @@ export function initGameDetails() {
     requestBarrier,
     warn
   )
-  const achievements = trackDetailsHandler(
-    ipcMain as never,
-    'getAchievements',
-    requestBarrier,
-    warn
-  )
+  const registry = ipcMain as unknown as {
+    _invokeHandlers?: Map<
+      string,
+      (event: unknown, ...args: unknown[]) => unknown
+    >
+  }
+  const originalAchievements =
+    registry._invokeHandlers instanceof Map
+      ? registry._invokeHandlers.get('getAchievements')
+      : undefined
+  const getAccountId = () => {
+    if (!gogConfigStore.get_nodefault('isLoggedIn')) return
+    const accountId = gogConfigStore.get_nodefault('userData.id')
+    return typeof accountId === 'string' && accountId.length
+      ? accountId
+      : undefined
+  }
+  const accountContext = createAchievementAccountContext(getAccountId)
+  const originalSet = gogConfigStore.set.bind(gogConfigStore)
+  gogConfigStore.set = (...args) => {
+    try {
+      return originalSet(...args)
+    } finally {
+      accountContext.observeAccount()
+    }
+  }
+  const originalDelete = gogConfigStore.delete.bind(gogConfigStore)
+  gogConfigStore.delete = (...args) => {
+    try {
+      return originalDelete(...args)
+    } finally {
+      accountContext.observeAccount()
+    }
+  }
+  const originalClear = gogConfigStore.clear.bind(gogConfigStore)
+  gogConfigStore.clear = (...args) => {
+    try {
+      return originalClear(...args)
+    } finally {
+      accountContext.observeAccount()
+    }
+  }
+  const originalCredentials = GOGUser.getCredentials.bind(GOGUser)
+  GOGUser.getCredentials = () => accountContext.credentials(originalCredentials)
+  let achievements = false
+  if (typeof originalAchievements === 'function') {
+    const getAchievementsForAccount = createAccountAchievements(
+      getAccountId,
+      accountContext,
+      (appName) => gogAchievementStore.delete(appName),
+      async (event, appName, runner, lang) => {
+        if (!(await GOGUser.getCredentials()))
+          throw new Error('Achievement credentials unavailable')
+        return Promise.resolve(
+          originalAchievements(event, appName, runner, lang)
+        ) as Promise<GameAchievement[]>
+      },
+      requestBarrier
+    )
+    achievements = replaceIpcHandler(
+      ipcMain as never,
+      'getAchievements',
+      (event, appName: string, runner: Runner, lang?: string) => {
+        if (runner !== 'gog')
+          return requestBarrier.run(`${runner}:${appName}`, () =>
+            Promise.resolve(originalAchievements(event, appName, runner, lang))
+          )
+        const accountId = getAccountId()
+        return accountId
+          ? getAchievementsForAccount(event, appName, runner, accountId, lang)
+          : []
+      },
+      warn
+    )
+    addHandler(
+      'getAchievementsForAccount',
+      (event, appName, runner, accountId, lang) =>
+        getAchievementsForAccount(event, appName, runner, accountId, lang)
+    )
+  } else {
+    warn('[nk] game details: achievement handler unavailable')
+    addHandler('getAchievementsForAccount', () => {
+      throw new Error('Achievement handler unavailable')
+    })
+  }
   trackedHandlers = extraInfo && installInfo && launchOptions && achievements
   addHandler('invalidateGameDetailsCaches', async (_e, request) =>
     requestBarrier.invalidate(

@@ -17,6 +17,7 @@ test('checking/offline endpoint status never counts empty wiki attempts even if 
     scheduleNotify: () => undefined
   })
   const gameDetailsApi = createGameDetailsApi(store, {
+    getAccountId: () => 'synthetic-account',
     ipc: () =>
       ({
         getWikiGameInfo: () => Promise.resolve(null)

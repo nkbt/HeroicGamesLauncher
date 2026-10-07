@@ -54,6 +54,7 @@ function setup({ online = true, language = 'en', platform = 'linux' } = {}) {
     getExtraInfo: jest.fn(() => Promise.resolve(goodExtra)),
     getWikiGameInfo: jest.fn(() => Promise.resolve(wiki)),
     getAchievements: jest.fn(() => Promise.resolve([])),
+    getAchievementsForAccount: jest.fn(() => Promise.resolve([])),
     requestGameSettings: jest.fn(() => Promise.resolve({ wineVersion: 'w' })),
     getAnticheatInfo: jest.fn(() => Promise.resolve(undefined)),
     getKnownFixes: jest.fn(() => Promise.resolve(undefined)),
@@ -68,6 +69,7 @@ function setup({ online = true, language = 'en', platform = 'linux' } = {}) {
   let game: GameInfo | undefined = libraryGame
   const state = { language, online }
   const gameDetailsApi = createGameDetailsApi(store, {
+    getAccountId: () => 'synthetic-account',
     ipc: () => ipc as unknown as DetailsIpc,
     getInstallInfo: installInfo as never,
     platform,
@@ -205,9 +207,9 @@ describe('failures', () => {
   test('an empty achievement list never replaces a non-empty one', async () => {
     const t = setup()
     const list = [{ name: 'a' }]
-    t.ipc.getAchievements.mockResolvedValueOnce(list as never)
+    t.ipc.getAchievementsForAccount.mockResolvedValueOnce(list as never)
     await t.gameDetailsApi.getAchievements('1', 'gog')
-    t.ipc.getAchievements.mockResolvedValueOnce([])
+    t.ipc.getAchievementsForAccount.mockResolvedValueOnce([])
     await expect(
       t.gameDetailsApi.getAchievements('1', 'gog', undefined, { force: true })
     ).rejects.toBeInstanceOf(FailureShapedResult)

@@ -18,3 +18,5 @@ export const handleResetGameDetailsCancelled = frontendListenerSlot('resetGameDe
 
 // nk: #5 - missing uninstalled details use the paced background transport.
 export const getInstallInfoBackground = makeHandlerInvoker('getInstallInfoBackground')
+
+export const getAchievementsForAccount = makeHandlerInvoker('getAchievementsForAccount')

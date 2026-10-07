@@ -2,6 +2,7 @@
 // first imported (hasStatus imports it, so at startup): hydrates from
 // IndexedDB and listens to game status events for the life of the renderer.
 import i18next from 'i18next'
+import { getAccountId } from './account'
 import { createDetailsScheduler } from './scheduler'
 import type { GameInfo, Runner } from 'common/types'
 import { getInstallInfo } from 'frontend/helpers'
@@ -53,6 +54,7 @@ export const gameDetailsApi = createGameDetailsApi(gameDetailsStore, {
   ipc: () => window.api as unknown as DetailsIpc,
   scheduler: gameDetailsScheduler,
   getInstallInfo,
+  getAccountId,
   getInstallInfoBackground: (appName, runner, installPlatform, build, branch) =>
     window.api.getInstallInfoBackground(
       appName,
