@@ -4,6 +4,7 @@ import { GameInfo, GameStatus, Status } from 'common/types'
 import { hasProgress } from './hasProgress'
 import { useTranslation } from 'react-i18next'
 import { getStatusLabel, handleNonAvailableGames } from './constants'
+import { skipUnchangedStatus } from 'frontend/nk/libraryCards' // nk: #4
 
 export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
   const appName = gameInfo.app_name
@@ -14,12 +15,13 @@ export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
   )
   const { t } = useTranslation('gamepage')
 
-  const [gameStatus, setGameStatus] = React.useState<{
+  const [gameStatus, nkSetGameStatus /* nk: #4 */] = React.useState<{
     status?: Status
     statusContext?: string
     folder?: string
     label: string
   }>({ label: '' })
+  const setGameStatus = skipUnchangedStatus(nkSetGameStatus) // nk: #4 single place for status updates
 
   const {
     thirdPartyManagedApp = undefined,
@@ -27,7 +29,7 @@ export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
     runner = 'sideload',
     isEAManaged,
     isUbisoftManaged
-  } = { ...gameInfo } // nk: #6 read the live gameInfo prop so kept-alive cards follow installs and uninstalls
+  } = { ...(gameInfo ?? newGameInfo) } // nk: #4 live gameInfo; newGameInfo is the fetch fallback
 
   React.useEffect(() => {
     if (newGameInfo) {
@@ -112,6 +114,12 @@ export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
     epic.library,
     gog.library,
     is_installed,
+    gameSize, // nk: #4
+    thirdPartyManagedApp, // nk: #4
+    isEAManaged, // nk: #4
+    isUbisoftManaged, // nk: #4
+    runner, // nk: #4
+    t, // nk: #4
     progress.percent
   ])
 

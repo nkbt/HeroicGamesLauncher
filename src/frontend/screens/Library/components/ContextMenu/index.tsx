@@ -1,5 +1,5 @@
 import React, { type ReactElement } from 'react'
-import Menu from '@mui/material/Menu'
+import Menu from 'frontend/nk/libraryCards/LazyMenu' // nk: #4 mounted only while open
 import MenuItem from '@mui/material/MenuItem'
 import './index.css'
 import { ListItemIcon } from '@mui/material'
