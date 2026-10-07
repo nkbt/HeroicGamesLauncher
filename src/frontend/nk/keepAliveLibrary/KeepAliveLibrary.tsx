@@ -47,6 +47,7 @@ import {
   withMemoizedCreateHref
 } from './navigationIsolation'
 import { structuralShare } from './structuralShare'
+import { useLibrarySync } from '../gameDetails'
 
 const SCROLL_POSITION_KEY = 'scrollPosition' // upstream Library's key
 
@@ -176,6 +177,8 @@ export default function KeepAliveLibrary() {
   const isolated = useIsolatedRouterContexts(active)
   const globalState = useGatedGlobalState(active)
   const navigation = useMemoizedNavigation()
+  // #5: game details follow the library lists (list entries, removed games)
+  useLibrarySync()
   // the same element every render: Library re-renders only through the
   // contexts it consumes (all of them gated here)
   const library = useMemo(() => <Library />, [])

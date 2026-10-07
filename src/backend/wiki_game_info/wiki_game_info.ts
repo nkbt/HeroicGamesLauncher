@@ -1,3 +1,4 @@
+import { dedupeWiki } from 'backend/nk/gameDetails/dedupeWiki' // nk: #5
 import { getInfoFromGamesDB } from 'backend/wiki_game_info/gamesdb/utils'
 import { getInfoFromProtonDB } from 'backend/wiki_game_info/protondb/utils'
 import { getSteamDeckComp } from 'backend/wiki_game_info/steamdeck/utils'
@@ -12,7 +13,7 @@ import { getUmuId } from './umu/utils'
 import { isLinux, isMac } from 'backend/constants/environment'
 import type { Game } from 'common/types/game_manager'
 
-export async function getWikiGameInfo(game: Game): Promise<WikiInfo | null> {
+async function fetchWiki(game: Game): Promise<WikiInfo | null> /* nk: #5 */ {
   const gameInfo = game.getGameInfo()
   const appName = gameInfo.app_name
   const runner = gameInfo.runner
@@ -83,3 +84,5 @@ export async function getWikiGameInfo(game: Game): Promise<WikiInfo | null> {
     return null
   }
 }
+
+export const getWikiGameInfo = dedupeWiki(fetchWiki) // nk: #5

@@ -18,7 +18,7 @@ type Props = {
 function TimeContainer({ gameInfo }: Props) {
   const { app_name: game, runner } = gameInfo
   const { t } = useTranslation('gamepage')
-  const [tsInfo, setTsInfo] = useState(timestampStore.get_nodefault(game))
+  const [tsInfo, setTsInfo] = useState(() => timestampStore.get_nodefault(game)) // nk: #5
   const { status } = hasStatus(gameInfo)
 
   useEffect(() => {

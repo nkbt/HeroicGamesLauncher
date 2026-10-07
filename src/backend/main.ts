@@ -326,9 +326,9 @@ if (!gotTheLock) {
     await MigrationSystem.get().applyMigrations()
 
     initOnlineMonitor()
-    initStoreManagers()
     initImagesCache()
-    initNk() // nk: #3
+    initNk() // nk: #3, #5 - wrap existing managers before initial refresh
+    initStoreManagers()
 
     // Add User-Agent Client hints to behave like Windows
     if (process.argv.includes('--spoof-windows')) {

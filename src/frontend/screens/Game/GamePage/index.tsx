@@ -1,6 +1,7 @@
+import { useDetailsArt } from 'frontend/nk/gameDetails/hooks' // nk: #5
 import './index.css'
 
-import React, { useContext, useEffect, useRef, useState } from 'react'
+import React, { useContext, useEffect, useState } from 'react' // nk: #5
 
 import {
   ArrowBackIosNew,
@@ -12,7 +13,7 @@ import {
 
 import { Tab, Tabs } from '@mui/material'
 
-import { getGameInfo, getInstallInfo, sendKill } from 'frontend/helpers'
+import { getGameInfo, sendKill } from 'frontend/helpers' // nk: #5
 import { launch, updateGame, install } from 'frontend/helpers/library'
 import { Link, NavLink, useLocation, useParams } from 'react-router-dom'
 import { Trans, useTranslation } from 'react-i18next'
@@ -20,15 +21,7 @@ import ContextProvider from 'frontend/state/ContextProvider'
 import { CachedImage, UpdateComponent, TabPanel } from 'frontend/components/UI'
 import UninstallModal from 'frontend/components/UI/UninstallModal'
 
-import {
-  ExtraInfo,
-  GameInfo,
-  GameSettings,
-  Runner,
-  WikiInfo,
-  InstallInfo,
-  GameAchievement
-} from 'common/types'
+import { GameInfo, Runner } from 'common/types' // nk: #5
 
 import GamePicture from '../GamePicture'
 import TimeContainer from '../TimeContainer'
@@ -69,19 +62,22 @@ import SettingsContext from 'frontend/screens/Settings/SettingsContext'
 import useGlobalState from 'frontend/state/GlobalStateV2'
 import Achievements from './components/Achievements'
 import { LaunchOptionSelector } from 'frontend/screens/Settings/components'
+import * as nk from 'frontend/nk/gameDetails' // nk: #5
 
-export default React.memo(function GamePage(): JSX.Element | null {
+const GamePage = React.memo(function GamePage(): JSX.Element | null {
+  // nk: #5
   const { appName, runner } = useParams() as { appName: string; runner: Runner }
+  useDetailsArt(runner, appName) // nk: #5
   const location = useLocation() as {
     state: { fromDM: boolean; gameInfo: GameInfo }
   }
   const { t, i18n } = useTranslation('gamepage')
   const { t: t2 } = useTranslation()
 
-  const { gameInfo: locationGameInfo } = location.state
+  const locationGameInfo = nk.useRouteGameInfo()! // nk: #5
 
   const [showUninstallModal, setShowUninstallModal] = useState(false)
-  const [wikiInfo, setWikiInfo] = useState<WikiInfo | null>(null)
+  const [wikiInfo, setWikiInfo] = nk.useWikiInfoState(runner, appName) // nk: #5
 
   const { epic, gog, gameUpdates, platform, showDialogModal, connectivity } =
     useContext(ContextProvider)
@@ -100,17 +96,18 @@ export default React.memo(function GamePage(): JSX.Element | null {
   )
 
   const [gameInfo, setGameInfo] = useState(locationGameInfo)
-  const [gameSettings, setGameSettings] = useState<GameSettings | null>(null)
+  const [gameSettings, setGameSettings] = nk.useGameSettingsState(appName) // nk: #5
 
   const { status, folder, statusContext } = hasStatus(gameInfo)
   const gameAvailable = gameInfo.is_installed && status !== 'notAvailable'
 
   const [progress, previousProgress] = hasProgress(appName, runner)
 
-  const [extraInfo, setExtraInfo] = useState<ExtraInfo | null>(
-    gameInfo.extra || null
-  )
-  const [achievements, setAchievements] = useState<GameAchievement[]>([])
+  const [extraInfo] = nk.useExtraInfoState(gameInfo) // nk: #5
+  const [achievements, setAchievements] = nk.useAchievementsState(
+    runner,
+    appName
+  ) // nk: #5
   const hasAchievements = achievements && achievements.length > 0
   const achievementPercentage = hasAchievements
     ? Math.round(
@@ -120,10 +117,9 @@ export default React.memo(function GamePage(): JSX.Element | null {
       )
     : 0
 
-  const [notInstallable, setNotInstallable] = useState<boolean>(false)
-  const [gameInstallInfo, setGameInstallInfo] = useState<InstallInfo | null>(
-    null
-  )
+  const [notInstallable, setNotInstallable] =
+    nk.useNotInstallableState(gameInfo) // nk: #5
+  const [gameInstallInfo, setGameInstallInfo] = nk.useInstallInfoState(gameInfo) // nk: #5
 
   const [hasError, setHasError] = useState<{
     error: boolean
@@ -170,17 +166,13 @@ export default React.memo(function GamePage(): JSX.Element | null {
     'info' | 'achievements' | 'extra' | 'requirements'
   >('info')
 
-  const previousIsPlaying = useRef<boolean>(isPlaying)
   useEffect(() => {
     const updateAchievements = async () => {
-      if (!isPlaying && previousIsPlaying.current)
-        window.api.clearAchievementCache(appName)
-      setAchievements(await window.api.getAchievements(appName, runner))
+      setAchievements(await nk.gameDetailsApi.getAchievements(appName, runner)) // nk: #5
     }
 
     updateAchievements()
-    previousIsPlaying.current = isPlaying
-  }, [isPlaying, appName])
+  }, [isPlaying, appName, setAchievements]) // nk: #5
 
   useEffect(() => {
     const updateGameInfo = async () => {
@@ -189,7 +181,6 @@ export default React.memo(function GamePage(): JSX.Element | null {
         if (newInfo) {
           setGameInfo(newInfo)
         }
-        setExtraInfo(await window.api.getExtraInfo(appName, runner))
       }
     }
     updateGameInfo()
@@ -214,7 +205,8 @@ export default React.memo(function GamePage(): JSX.Element | null {
           !thirdPartyManagedApp &&
           !isOffline
         ) {
-          getInstallInfo(appName, runner, installPlatform)
+          nk.gameDetailsApi
+            .getInstallInfo(appName, runner, installPlatform) // nk: #5
             .then((info) => {
               if (!info) {
                 throw new Error('Cannot get game info')
@@ -237,7 +229,8 @@ export default React.memo(function GamePage(): JSX.Element | null {
         }
 
         try {
-          const gameSettings = await window.api.requestGameSettings(appName)
+          const gameSettings =
+            await nk.gameDetailsApi.requestGameSettings(appName) // nk: #5
           setGameSettings(gameSettings)
         } catch (error) {
           setHasError({ error: true, message: error })
@@ -252,19 +245,25 @@ export default React.memo(function GamePage(): JSX.Element | null {
     gog.library,
     gameInfo,
     settingsModalProps.isOpen,
-    isOffline
+    isOffline,
+    setGameInstallInfo,
+    setGameSettings,
+    setNotInstallable // nk: #5
   ])
 
   useEffect(() => {
-    window.api.getWikiGameInfo(gameInfo.title, appName, runner).then((info) => {
-      if (
-        info &&
-        (info.applegamingwiki || info.howlongtobeat || info.pcgamingwiki)
-      ) {
-        setWikiInfo(info)
-      }
-    })
-  }, [appName])
+    nk.gameDetailsApi
+      .getWikiGameInfo(gameInfo.title, appName, runner)
+      .then((info) => {
+        // nk: #5
+        if (
+          info &&
+          (info.applegamingwiki || info.howlongtobeat || info.pcgamingwiki)
+        ) {
+          setWikiInfo(info)
+        }
+      })
+  }, [appName, setWikiInfo]) // nk: #5
 
   useEffect(() => {
     // when the user clicks the Play button, we disable it so the user can't click it again
@@ -419,6 +418,10 @@ export default React.memo(function GamePage(): JSX.Element | null {
                       <ArrowBackIosNew />
                     </NavLink>
                     <div className="topRowWapperInner">
+                      <nk.RefreshButton
+                        runner={runner}
+                        appName={appName} /* nk: #5 */
+                      />
                       {!isBrowserGame && <SettingsButton gameInfo={gameInfo} />}
                       <DotsMenu
                         gameInfo={gameInfo}
@@ -530,7 +533,8 @@ export default React.memo(function GamePage(): JSX.Element | null {
                           index="achievements"
                           className="achievementsTab"
                         >
-                          <Achievements achievements={achievements} />
+                          <Achievements appName={appName} runner={runner} />{' '}
+                          {/* nk: #5 */}
                         </TabPanel>
                         <TabPanel
                           value={currentTab}
@@ -622,3 +626,5 @@ export default React.memo(function GamePage(): JSX.Element | null {
     })
   }
 })
+
+export default nk.keyedByGame(GamePage) // nk: #5

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { InfoBox } from 'frontend/components/UI'
 import ContextProvider from 'frontend/state/ContextProvider'
 import { CleaningServicesOutlined } from '@mui/icons-material'
+import { clearCaches } from 'frontend/nk/gameDetails' // nk: #5
 
 const ClearCache = () => {
   const { refreshLibrary } = useContext(ContextProvider)
@@ -11,7 +12,7 @@ const ClearCache = () => {
   async function clearHeroicCache() {
     const storage: Storage = window.localStorage
     storage.removeItem('updates')
-    window.api.clearCache(true)
+    clearCaches(true) // nk: #5
     return refreshLibrary({ runInBackground: true })
   }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LaunchOption, Runner } from 'common/types'
+import * as nk from 'frontend/nk/gameDetails' // nk: #5
 
 interface UseLaunchOptionsProps {
   appName: string
@@ -16,7 +17,10 @@ export const useLaunchOptions = ({
   onSelectionChange
 }: UseLaunchOptionsProps) => {
   const { t } = useTranslation('gamepage')
-  const [launchOptions, setLaunchOptions] = useState<LaunchOption[]>([])
+  const [launchOptions, setLaunchOptions] = nk.useLaunchOptionsState(
+    runner,
+    appName
+  ) // nk: #5
   const [selectedIndex, setSelectedIndex] = useState(-1)
 
   // Fetch launch options
@@ -24,7 +28,8 @@ export const useLaunchOptions = ({
     setSelectedIndex(-1)
     const fetchOptions = async () => {
       try {
-        const options = await window.api.getLaunchOptions(
+        // nk: #5 cached
+        const options = await nk.gameDetailsApi.getLaunchOptions(
           appName,
           runner as Runner
         )
@@ -37,7 +42,7 @@ export const useLaunchOptions = ({
     if (appName && runner) {
       void fetchOptions()
     }
-  }, [appName, runner])
+  }, [appName, runner, setLaunchOptions]) // nk: #5
 
   // Find and set the previously used option
   useMemo(() => {

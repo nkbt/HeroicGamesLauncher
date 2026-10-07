@@ -36,6 +36,7 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faLinux, faSteam } from '@fortawesome/free-brands-svg-icons'
 import { faWineGlass } from '@fortawesome/free-solid-svg-icons'
+import * as nk from 'frontend/nk/gameDetails' // nk: #5
 
 interface Props {
   appName: string
@@ -82,9 +83,11 @@ export default function GamesSubmenu({
   const [eosOverlayRefresh, setEosOverlayRefresh] = useState<boolean>(false)
   const eosOverlayAppName = '98bc04bc842e4906993fd6d6644ffb8d'
   const [showUninstallModal, setShowUninstallModal] = useState(false)
-  const [protonDBurl, setProtonDBurl] = useState(
-    `https://www.protondb.com/search?q=${title}`
-  )
+  const [protonDBurl, setProtonDBurl] = nk.useProtonDBurlState(
+    runner,
+    appName,
+    title
+  ) // nk: #5
   const { t } = useTranslation('gamepage')
   const isSideloaded = runner === 'sideload'
   const isThirdPartyManaged = !!gameInfo.thirdPartyManagedApp
@@ -249,13 +252,14 @@ export default function GamesSubmenu({
 
   useEffect(() => {
     // Get steam id and set direct proton db link
-    window.api.getWikiGameInfo(title, appName, runner).then((info) => {
+    nk.gameDetailsApi.getWikiGameInfo(title, appName, runner).then((info) => {
+      // nk: #5
       const steamID = info?.pcgamingwiki?.steamID ?? info?.gamesdb?.steamID
       if (steamID) {
         setProtonDBurl(`https://www.protondb.com/app/${steamID}`)
       }
     })
-  }, [title, appName])
+  }, [title, appName, runner, setProtonDBurl]) // nk: #5
 
   const refreshCircle = () => {
     return <CircularProgress className="link button is-text is-link" />

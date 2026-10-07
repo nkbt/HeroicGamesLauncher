@@ -1,11 +1,15 @@
-import { GameAchievement } from 'common/types'
+import { GameAchievement, Runner } from 'common/types' // nk: #5
+import { useAchievementsState } from 'frontend/nk/gameDetails/hooks' // nk: #5
 import { useMemo } from 'react'
 
 interface Props {
-  achievements: GameAchievement[]
+  appName: string // nk: #5
+  runner: Runner // nk: #5
 }
 
-const Achievements = ({ achievements }: Props) => {
+const Achievements = ({ appName, runner }: Props) => {
+  // nk: #5
+  const [achievements] = useAchievementsState(runner, appName) // nk: #5
   const sortedAchievements = useMemo(() => {
     const unlocked = achievements
       .filter((x) => x.date_unlocked !== null)

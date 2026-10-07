@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { logError, logInfo, LogPrefix } from 'backend/logger'
 import type { Game } from 'common/types/game_manager'
+import { plainGogStoreUrl } from 'backend/nk/gameDetails/plainGogStoreUrl' // nk: #5
 
 export interface HeroicHowLongToBeatEntry {
   completionist: number
@@ -94,7 +95,7 @@ async function getGogHLTBGameData(
   game: Game
 ): Promise<HeroicHowLongToBeatEntry | null> {
   const { app_name, title } = game.getGameInfo()
-  const { storeUrl } = await game.getExtraInfo()
+  const storeUrl = plainGogStoreUrl((await game.getExtraInfo()).storeUrl) // nk: #5
   if (!storeUrl) return null
 
   try {

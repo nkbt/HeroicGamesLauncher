@@ -1,0 +1,32 @@
+/* nk: #5 - game page Refresh button (shares the settings button look) */
+.nk-details-refresh {
+  & > svg {
+    font-size: 28px;
+  }
+
+  &.is-refreshing > svg {
+    animation: nk-details-refresh-spin 1s linear infinite;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+
+  &.is-refreshing:disabled {
+    cursor: progress;
+    opacity: 1;
+  }
+}
+
+@keyframes nk-details-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nk-details-refresh.is-refreshing > svg {
+    animation: none;
+  }
+}

@@ -1,10 +1,11 @@
-import { AppSettings, GameInfo, Runner } from 'common/types'
+import { GameInfo, Runner } from 'common/types' // nk: #5
 import { SettingsContextType } from 'frontend/types'
 import { useTranslation } from 'react-i18next'
-import { useState, useEffect, useContext } from 'react'
+import { useEffect, useContext } from 'react' // nk: #5
 import ContextProvider from 'frontend/state/ContextProvider'
 
 import useGlobalState from 'frontend/state/GlobalStateV2'
+import * as nk from 'frontend/nk/gameDetails' // nk: #5
 
 type Props = {
   appName: string
@@ -13,7 +14,7 @@ type Props = {
 }
 
 const useSettingsContext = ({ appName, gameInfo, runner }: Props) => {
-  const [currentConfig, setCurrentConfig] = useState<Partial<AppSettings>>({})
+  const [currentConfig, setCurrentConfig] = nk.useSettingsConfigState(appName) // nk: #5
   const { i18n } = useTranslation()
   const { platform } = useContext(ContextProvider)
   const { settingsModalProps } = useGlobalState.keys('settingsModalProps')
@@ -30,13 +31,21 @@ const useSettingsContext = ({ appName, gameInfo, runner }: Props) => {
   // Load Heroic's or game's config, only if not loaded already
   useEffect(() => {
     const getSettings = async () => {
+      const editSeq = nk.settingsEditSeq(appName) // nk: #5
       const config = isDefault
         ? await window.api.requestAppSettings()
-        : await window.api.requestGameSettings(appName)
+        : await nk.gameDetailsApi.requestGameSettings(appName) // nk: #5
+      if (nk.settingsEditedSince(appName, editSeq)) return // nk: #5
       setCurrentConfig(config)
     }
     void getSettings()
-  }, [appName, isDefault, i18n.language, settingsModalProps.isOpen])
+  }, [
+    appName,
+    isDefault,
+    i18n.language,
+    settingsModalProps.isOpen,
+    setCurrentConfig
+  ]) // nk: #5
 
   const contextValues: SettingsContextType = {
     getSetting: (key, fallback) => currentConfig[key] ?? fallback,
@@ -47,6 +56,7 @@ const useSettingsContext = ({ appName, gameInfo, runner }: Props) => {
         if (noChange) return
       }
       setCurrentConfig({ ...currentConfig, [key]: value })
+      nk.settingEdited(appName, key, value) // nk: #5
       window.api.setSetting({ appName, key, value })
     },
     config: currentConfig,
