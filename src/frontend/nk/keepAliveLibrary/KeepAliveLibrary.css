@@ -1,0 +1,9 @@
+/* nk: #6 - CSS animations restart when an element goes from display:none back
+   to rendered. Once the kept-alive Library has been hidden once, stop the
+   per-card fade-in so already-seen cards don't fade in again on every return.
+   `data-restored` is never removed (removing it would restart the animation).
+   Re-check after upstream merges: `.gameCard` class / `fade-in` animation in
+   screens/Library/components/GameCard/index.css. */
+[data-keepalive='library'][data-restored] .gameCard {
+  animation: none;
+}

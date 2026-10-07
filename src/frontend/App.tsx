@@ -22,6 +22,7 @@ import { TourProvider } from './state/TourContext'
 import { InstallGameWrapper } from './screens/Library/components/InstallModal'
 import { SettingsModalWrapper } from './screens/Settings/components/SettingsModal'
 import AnalyticsDialog from './screens/Settings/components/AnalyticsDialog'
+import KeepAliveLibrary from './nk/keepAliveLibrary/KeepAliveLibrary' // nk: #6
 
 function Root() {
   const {
@@ -97,6 +98,7 @@ function Root() {
               <LogFileUploadDialog />
               <UploadedLogFilesList />
               <Outlet />
+              <KeepAliveLibrary /* nk: #6 */ />
               <AnalyticsDialog />
             </main>
             <div className="controller">
@@ -130,7 +132,7 @@ const router = createHashRouter([
     children: [
       {
         index: true,
-        lazy: makeLazyFunc(import('./screens/Library'))
+        element: null // nk: #6 - Library is rendered by <KeepAliveLibrary /> in Root
       },
       {
         path: 'login',

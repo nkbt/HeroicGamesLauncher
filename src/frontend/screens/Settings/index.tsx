@@ -102,7 +102,7 @@ function Settings() {
       <SettingsContext.Provider value={contextValues}>
         <div className={`Settings ${type}`}>
           <div role="list" className="settingsWrapper">
-            <NavLink to="/library" role="link" className="backButton">
+            <NavLink to="/" /* nk: #6 */ role="link" className="backButton">
               <ArrowCircleLeftIcon />
             </NavLink>
             <h1 className="headerTitle" data-testid="headerTitle">
