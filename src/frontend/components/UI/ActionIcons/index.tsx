@@ -20,6 +20,7 @@ import classNames from 'classnames'
 import LibraryContext from 'frontend/screens/Library/LibraryContext'
 import TourButton from 'frontend/components/Tour/TourButton'
 import { LIBRARY_TOUR_ID } from 'frontend/screens/Library/components/LibraryTour'
+import { NkSortButtons, useNkDateSortActive } from 'frontend/nk/librarySort' // nk: #3
 
 interface ActionIconsProps {
   'data-tour'?: string
@@ -41,6 +42,7 @@ export default React.memo(function ActionIcons({
     showAlphabetFilter,
     onToggleAlphabetFilter
   } = useContext(LibraryContext)
+  const nkDateSort = useNkDateSortActive() // nk: #3
 
   return (
     <div className="ActionIcons" data-tour={dataTour}>
@@ -70,7 +72,9 @@ export default React.memo(function ActionIcons({
             />
           </button>
         )}
+        <NkSortButtons /* nk: #3 */ />
         <button
+          hidden={nkDateSort} // nk: #3
           className="FormControl__button"
           title={
             sortDescending

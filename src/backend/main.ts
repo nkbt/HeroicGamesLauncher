@@ -142,6 +142,7 @@ import {
 } from './constants/paths'
 import { supportedLanguages } from 'common/languages'
 import MigrationSystem from './migration'
+import { initNk } from './nk' // nk: #3
 
 if (isLinux) app.commandLine?.appendSwitch('--gtk-version', '3')
 
@@ -327,6 +328,7 @@ if (!gotTheLock) {
     initOnlineMonitor()
     initStoreManagers()
     initImagesCache()
+    initNk() // nk: #3
 
     // Add User-Agent Client hints to behave like Windows
     if (process.argv.includes('--spoof-windows')) {
