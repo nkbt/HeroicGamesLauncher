@@ -162,7 +162,7 @@ export default React.memo(function GamePage(): JSX.Element | null {
   const isOffline = connectivity.status !== 'online'
   const notPlayableOffline = isOffline && !gameInfo.canRunOffline
 
-  const backRoute = location.state?.fromDM ? '/download-manager' : '/library'
+  const backRoute = location.state?.fromDM ? '/download-manager' : '/' // nk: #6
 
   const storage: Storage = window.localStorage
 

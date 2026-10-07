@@ -27,7 +27,7 @@ export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
     runner = 'sideload',
     isEAManaged,
     isUbisoftManaged
-  } = { ...newGameInfo }
+  } = { ...gameInfo } // nk: #6 read the live gameInfo prop so kept-alive cards follow installs and uninstalls
 
   React.useEffect(() => {
     if (newGameInfo) {
