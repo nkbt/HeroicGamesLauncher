@@ -643,6 +643,15 @@
         "unsync": "Unsync Complete"
     },
     "next": "Next",
+    "nk": {
+        "game_details": {
+            "refresh": "Refresh game details",
+            "refresh_failed": "Some details could not be refreshed. The previous data is kept.",
+            "refresh_offline": "Refreshing game details needs a network connection",
+            "refresh_tooltip": "Download all details of this game again: store info, sizes, ratings, achievements and artwork",
+            "refreshing": "Refreshing game details ({{done}}/{{total}})"
+        }
+    },
     "notify": {
         "error": {
             "move": "Error Moving the Game",

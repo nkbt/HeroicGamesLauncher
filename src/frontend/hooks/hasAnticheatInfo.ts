@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react' // nk: #5
 import { AntiCheatInfo, GameInfo } from 'common/types'
+import * as nk from 'frontend/nk/gameDetails' // nk: #5
 
 export const hasAnticheatInfo = (gameInfo: GameInfo) => {
-  const [anticheatInfo, setAnticheatInfo] = useState<AntiCheatInfo | null>(null)
+  const [anticheatInfo, setAnticheatInfo] = nk.useAnticheatState(gameInfo) // nk: #5
 
   useEffect(() => {
     if (
@@ -10,13 +11,23 @@ export const hasAnticheatInfo = (gameInfo: GameInfo) => {
       gameInfo.title &&
       gameInfo.namespace !== undefined
     ) {
-      window.api
-        .getAnticheatInfo(gameInfo.namespace)
+      nk.gameDetailsApi // nk: #5
+        .getAnticheatInfo(
+          gameInfo.namespace,
+          gameInfo.runner,
+          gameInfo.app_name
+        )
         .then((anticheatInfo: AntiCheatInfo | null) => {
           setAnticheatInfo(anticheatInfo)
         })
     }
-  }, [gameInfo])
+  }, [
+    gameInfo.namespace,
+    gameInfo.runner,
+    gameInfo.app_name,
+    gameInfo.title,
+    setAnticheatInfo
+  ]) // nk: #5
 
   return anticheatInfo
 }

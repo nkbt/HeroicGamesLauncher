@@ -1,10 +1,11 @@
 import React from 'react'
 import ContextProvider from 'frontend/state/ContextProvider'
-import { GameInfo, GameStatus, Status } from 'common/types'
+import { GameInfo, GameStatus } from 'common/types'
 import { hasProgress } from './hasProgress'
 import { useTranslation } from 'react-i18next'
 import { getStatusLabel, handleNonAvailableGames } from './constants'
 import { skipUnchangedStatus } from 'frontend/nk/libraryCards' // nk: #4
+import * as nk from 'frontend/nk/gameDetails/statusHooks' // nk: #5
 
 export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
   const appName = gameInfo.app_name
@@ -15,13 +16,14 @@ export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
   )
   const { t } = useTranslation('gamepage')
 
-  const [gameStatus, nkSetGameStatus /* nk: #4 */] = React.useState<{
-    status?: Status
-    statusContext?: string
-    folder?: string
-    label: string
-  }>({ label: '' })
-  const setGameStatus = skipUnchangedStatus(nkSetGameStatus) // nk: #4 single place for status updates
+  const [gameStatus, nkSetGameStatus /* nk: #4 */] = nk.useGameStatusState(
+    gameInfo,
+    t
+  ) // nk: #5
+  const setGameStatus = nk.rememberingStatus(
+    appName,
+    skipUnchangedStatus(nkSetGameStatus)
+  ) // nk: #4 single place for status updates; #5 remembered
 
   const {
     thirdPartyManagedApp = undefined,

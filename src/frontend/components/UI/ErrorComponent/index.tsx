@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { CleaningServicesOutlined, DeleteOutline } from '@mui/icons-material'
 import './index.css'
 import ContextProvider from 'frontend/state/ContextProvider'
+import { clearCaches } from 'frontend/nk/gameDetails' // nk: #5
 
 export default function ErrorComponent({ message }: { message: string }) {
   const { t } = useTranslation()
@@ -37,7 +38,7 @@ export default function ErrorComponent({ message }: { message: string }) {
 
         <button
           className="button is-footer is-danger"
-          onClick={() => window.api.clearCache(true)}
+          onClick={() => clearCaches(true) /* nk: #5 */}
         >
           <div className="button-icontext-flex">
             <div className="button-icon-flex">

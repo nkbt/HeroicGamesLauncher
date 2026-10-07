@@ -9,6 +9,7 @@
 import { logWarning, LogPrefix } from 'backend/logger'
 import { initLibraryDates } from './libraryDates'
 import { initImageCache } from './imageCache'
+import { initGameDetails } from './gameDetails'
 
 let initialized = false
 
@@ -30,6 +31,15 @@ export function initNk() {
   } catch (error) {
     logWarning(
       ['[nk] init failed: image cache (#4)', String(error)],
+      LogPrefix.Backend
+    )
+  }
+
+  try {
+    initGameDetails()
+  } catch (error) {
+    logWarning(
+      ['[nk] init failed: game details (#5)', String(error)],
       LogPrefix.Backend
     )
   }
