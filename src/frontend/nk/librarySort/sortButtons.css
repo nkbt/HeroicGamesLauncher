@@ -1,6 +1,0 @@
-/* nk: #3 - ActionIcons hides the upstream A<->Z button with the `hidden`
-   attribute while date mode is on. Keep it hidden even if upstream ever gives
-   segmented/FormControl buttons an explicit `display`. */
-.FormControl--segmented > button[hidden] {
-  display: none !important;
-}
