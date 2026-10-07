@@ -1,3 +1,7 @@
+jest.mock('frontend/nk/gameDetails/account', () => ({
+  getAccountId: () => undefined
+}))
+
 // The kept-alive Library never remounts its cards, so `hasStatus` must follow
 // the current `gameInfo` prop instead of the value it was first called with.
 // jsdom is not available, so the hook runs under a tiny single-component

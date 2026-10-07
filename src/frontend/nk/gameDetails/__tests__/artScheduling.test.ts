@@ -1,3 +1,7 @@
+jest.mock('../account', () => ({
+  getAccountId: () => undefined
+}))
+
 import type {
   ExtraInfo,
   GameInfo,
@@ -54,9 +58,10 @@ beforeEach(async () => {
   })
 })
 
-afterEach(() => {
+afterEach(async () => {
   global.Image = OriginalImage
   expect(gameDetailsScheduler.pending()).toBe(0)
+  await gameDetailsStore.flush()
 })
 
 function setup(appName: string) {

@@ -1,3 +1,7 @@
+jest.mock('frontend/nk/gameDetails/account', () => ({
+  getAccountId: () => undefined
+}))
+
 import type { GameInfo } from 'common/types'
 import { createHookRoot } from 'frontend/nk/test/hookRuntime'
 import ContextProvider from 'frontend/state/ContextProvider'

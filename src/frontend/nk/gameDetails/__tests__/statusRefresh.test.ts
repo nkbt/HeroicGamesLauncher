@@ -1,3 +1,7 @@
+jest.mock('../account', () => ({
+  getAccountId: () => undefined
+}))
+
 import type { GameInfo } from 'common/types'
 import { gameDetailsApi, gameDetailsStore, refreshStatus } from '../instance'
 import { forgetStatus, peekStatus, subscribeStatus } from '../statusMemo'
