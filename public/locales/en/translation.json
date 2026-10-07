@@ -613,8 +613,12 @@
         "hideAlphabetFilter": "Hide Alphabet Filter",
         "showAlphabetFilter": "Show Alphabet Filter",
         "sortAscending": "Sort Ascending",
+        "sortByDateAdded": "Sort by date added",
+        "sortByName": "Sort by name",
         "sortByStatus": "Sort by Status",
         "sortDescending": "Sort Descending",
+        "sortNewestFirst": "Newest first",
+        "sortOldestFirst": "Oldest first",
         "toggleLayout": {
             "grid": "Toggle to a grid layout",
             "list": "Toggle to a list layout"

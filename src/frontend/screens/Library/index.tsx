@@ -37,6 +37,7 @@ import CategoriesManager from './components/CategoriesManager'
 import LibraryTour from './components/LibraryTour'
 import AlphabetFilter from './components/AlphabetFilter'
 import { openInstallGameModal } from 'frontend/state/InstallGameModal'
+import { useNkLibraryDateSort } from 'frontend/nk/librarySort' // nk: #3
 
 const storage = window.localStorage
 
@@ -220,6 +221,7 @@ export default React.memo(function Library(): JSX.Element {
     storage.setItem('sortInstalled', JSON.stringify(value))
     setSortInstalled(value)
   }
+  const nkDateSort = useNkLibraryDateSort() // nk: #3
 
   const backToTopElement = useRef(null)
 
@@ -617,6 +619,7 @@ export default React.memo(function Library(): JSX.Element {
         ? -gameA.localeCompare(gameB)
         : gameA.localeCompare(gameB)
     })
+    library = nkDateSort(library) // nk: #3
     const installed = library.filter((game) => game?.is_installed)
     const notInstalled = library.filter(
       (game) => !game?.is_installed && !installing.includes(game?.app_name)
@@ -631,6 +634,7 @@ export default React.memo(function Library(): JSX.Element {
 
     return [...library]
   }, [
+    nkDateSort, // nk: #3
     gamesForAlphabetFilter,
     alphabetFilterLetter,
     sortDescending,
