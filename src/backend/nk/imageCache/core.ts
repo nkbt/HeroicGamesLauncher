@@ -135,7 +135,6 @@ export function createImageCache(deps: ImageCacheDeps) {
   }
 
   async function run(entry: Entry) {
-    let lastError: unknown
     // the lane can change while queued, never while running
     const protocol = entry.lane === 'high'
     const attempts = protocol ? 1 : PREFETCH_ATTEMPTS
@@ -145,15 +144,13 @@ export function createImageCache(deps: ImageCacheDeps) {
         await downloadOnce(entry, timeout)
         batch.downloaded++
         return pathOf(entry.digest)
-      } catch (error) {
-        lastError = error
+      } catch {
+        // Request errors can contain private URLs; only log the digest below.
       }
     }
     batch.failed++
     if (batch.failed <= MAX_FAILURE_LOGS_PER_BATCH) {
-      deps.logWarning(
-        `[nk] image cache: download failed (${String(lastError)}): ${entry.url}`
-      )
+      deps.logWarning(`[nk] image cache: download failed: ${entry.digest}`)
     }
     return null
   }

@@ -149,6 +149,75 @@ describe('image cache core', () => {
     expect(deps.rename).not.toHaveBeenCalled()
   })
 
+  test('failed download omits URL userinfo and private error text from logs', async () => {
+    const privateUrl =
+      'https://synthetic-user:synthetic-password@img.example.test/private.jpg'
+    const { cache, deps, requests } = setup()
+    const p = cache.ensure(privateUrl)
+    await flush()
+    requests[0].fail(new Error(`Request failed for ${privateUrl}`))
+    await expect(p).resolves.toBeNull()
+    expect(deps.logWarning).toHaveBeenCalledTimes(1)
+    expect(deps.logWarning).toHaveBeenCalledWith(
+      `[nk] image cache: download failed: ${digestOf(privateUrl)}`
+    )
+    expect(deps.logInfo).toHaveBeenCalledTimes(1)
+    expect(deps.logInfo).toHaveBeenCalledWith(
+      '[nk] image cache: downloaded 0 image(s), 1 failed (max 1 concurrent)'
+    )
+  })
+
+  test('failed download omits signed URL query and private error text from logs', async () => {
+    const privateUrl =
+      'https://img.example.test/private.jpg?token=synthetic-token&X-Amz-Signature=synthetic-signature'
+    const { cache, deps, requests } = setup()
+    const p = cache.ensure(privateUrl)
+    await flush()
+    requests[0].fail(new Error(`Request failed for ${privateUrl}`))
+    await expect(p).resolves.toBeNull()
+    expect(deps.logWarning).toHaveBeenCalledTimes(1)
+    expect(deps.logWarning).toHaveBeenCalledWith(
+      `[nk] image cache: download failed: ${digestOf(privateUrl)}`
+    )
+    expect(deps.logInfo).toHaveBeenCalledTimes(1)
+    expect(deps.logInfo).toHaveBeenCalledWith(
+      '[nk] image cache: downloaded 0 image(s), 1 failed (max 1 concurrent)'
+    )
+  })
+
+  test('failed download omits URL fragment and private error text from logs', async () => {
+    const privateUrl =
+      'https://img.example.test/private.jpg#synthetic-private-fragment'
+    const { cache, deps, requests } = setup()
+    const p = cache.ensure(privateUrl)
+    await flush()
+    requests[0].fail(new Error(`Request failed for ${privateUrl}`))
+    await expect(p).resolves.toBeNull()
+    expect(deps.logWarning).toHaveBeenCalledTimes(1)
+    expect(deps.logWarning).toHaveBeenCalledWith(
+      `[nk] image cache: download failed: ${digestOf(privateUrl)}`
+    )
+    expect(deps.logInfo).toHaveBeenCalledTimes(1)
+    expect(deps.logInfo).toHaveBeenCalledWith(
+      '[nk] image cache: downloaded 0 image(s), 1 failed (max 1 concurrent)'
+    )
+  })
+
+  test('failed download omits untrusted response content type from logs', async () => {
+    const { cache, deps, requests } = setup()
+    const p = cache.ensure(url('private-response'))
+    await flush()
+    requests[0].respond({
+      contentType:
+        'text/html; private-url=https://img.example.test/private.jpg?token=synthetic-token'
+    })
+    await expect(p).resolves.toBeNull()
+    expect(deps.logWarning).toHaveBeenCalledTimes(1)
+    expect(deps.logWarning).toHaveBeenCalledWith(
+      `[nk] image cache: download failed: ${digestOf(url('private-response'))}`
+    )
+  })
+
   test('protocol lane: one attempt, short timeout; prefetch lane: one retry', async () => {
     const { cache, deps, requests } = setup()
     const p = cache.ensure(url('p'))
