@@ -15,3 +15,6 @@ export const handleResetGameDetails = frontendListenerSlot('resetGameDetails')
 export const gameDetailsResetReady = makeListenerCaller('gameDetailsResetReady')
 
 export const handleResetGameDetailsCancelled = frontendListenerSlot('resetGameDetailsCancelled')
+
+// nk: #5 - missing uninstalled details use the paced background transport.
+export const getInstallInfoBackground = makeHandlerInvoker('getInstallInfoBackground')

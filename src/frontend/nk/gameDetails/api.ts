@@ -27,6 +27,11 @@ import type {
   WikiInfo
 } from 'common/types'
 import type { GameDetailsStore } from './store'
+import type {
+  DetailsScheduler,
+  DetailsPriority,
+  DetailsLane
+} from './scheduler'
 import {
   isEmptyWikiInfo,
   isFailureShapedExtraInfo,
@@ -37,6 +42,7 @@ import {
   detailsKey,
   type DetailsKey,
   extraInfoSlot,
+  isExtraInfoSlot,
   installInfoSlot,
   listGroupOf,
   type ListSig,
@@ -79,6 +85,8 @@ export interface ApiDeps {
     build?: string,
     branch?: string
   ) => Promise<InstallInfo | null>
+  scheduler?: DetailsScheduler
+  getInstallInfoBackground?: ApiDeps['getInstallInfo']
   platform: string
   getLanguage: () => string
   isOnline: () => boolean
@@ -88,6 +96,8 @@ export interface ApiDeps {
 
 export interface FetchOptions {
   force?: boolean
+  priority?: DetailsPriority
+  installInfoBackground?: boolean
   /**
    * Record the list signature of the slot's group (default true). A local
    * event re-fills before the library list reflects the change, so it
@@ -107,7 +117,7 @@ interface ReadSpec<T> {
   /** the game, for its list signature (none for settings) */
   runner?: Runner
   appName: string
-  fetch: () => Promise<T>
+  fetch: (options: FetchOptions) => Promise<T>
   options: FetchOptions
   /** a result that is not stored and never replaces a filled slot */
   isFailure?: (value: T, previous: T | null | undefined) => boolean
@@ -122,32 +132,87 @@ export type GameDetailsApi = ReturnType<typeof createGameDetailsApi>
 
 export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
   const inflight = new Map<string, Promise<unknown>>()
+  const requestOptions = new Map<
+    string,
+    FetchOptions & { backgroundRequested: boolean }
+  >()
+  let operation = 0
+  const achievementEpochs = new Map<DetailsKey, number>()
+  function joinRequest(id: string, options: FetchOptions) {
+    const effective = requestOptions.get(id)
+    if (effective) {
+      if ((options.priority ?? 0) === 2) effective.backgroundRequested = true
+      effective.priority = Math.min(
+        effective.priority ?? 0,
+        options.priority ?? 0
+      ) as DetailsPriority
+    }
+    deps.scheduler?.promote(
+      id,
+      options.priority ?? 0,
+      options.installInfoBackground ? 'installInfoBackground' : undefined
+    )
+  }
   const wikiInflight = new Map<string, Promise<WikiInfo | null>>()
+  const listGroupEpochs = new Map<
+    DetailsKey,
+    { meta: number; install: number }
+  >()
   const epochs = new Map<DetailsKey, number>()
   const holds = new Map<DetailsKey, Promise<unknown>>()
   const counts: Record<string, number> = {}
 
   let settingsGeneration = 0
-  const epochOf = (key: DetailsKey) =>
-    (epochs.get(key) ?? 0) +
-    (key.startsWith('settings:') ? settingsGeneration : 0)
+  const epochOf = (key: DetailsKey, slot?: SlotId) => {
+    const group = slot ? listGroupOf(slot) : null
+    return (
+      (epochs.get(key) ?? 0) +
+      (slot === 'achievements' ? (achievementEpochs.get(key) ?? 0) : 0) +
+      (key.startsWith('settings:') ? settingsGeneration : 0) +
+      (group === 'meta' || group === 'install'
+        ? (listGroupEpochs.get(key)?.[group] ?? 0)
+        : 0)
+    )
+  }
 
   /**
    * A Refresh of this game starts: results of fetches that started before
    * it (game slots and the game's settings) are no longer stored.
    */
-  function beginRefresh(runner: Runner, appName: string) {
+  function beginRefresh(
+    runner: Runner,
+    appName: string,
+    scope?: 'install' | 'achievements'
+  ) {
     const game = detailsKey(runner, appName)
     const settings = settingsKey(appName)
-    epochs.set(game, epochOf(game) + 1)
+    deps.scheduler?.cancel(game, false, scope)
+    deps.scheduler?.cancel(settings)
+    if (scope === 'achievements') {
+      achievementEpochs.set(game, (achievementEpochs.get(game) ?? 0) + 1)
+    } else if (scope === 'install') {
+      const groups = listGroupEpochs.get(game) ?? { meta: 0, install: 0 }
+      listGroupEpochs.set(game, { ...groups, install: groups.install + 1 })
+    } else epochs.set(game, epochOf(game) + 1)
     epochs.set(settings, epochOf(settings) + 1)
     const generation = store.generation()
     const version = store.version(game)
-    const epoch = epochOf(game)
+    const slot =
+      scope === 'achievements'
+        ? 'achievements'
+        : scope === 'install'
+          ? installInfoSlot('Windows')
+          : undefined
+    const epoch = epochOf(game, slot)
+    const groups = listGroupEpochs.get(game)
     return () =>
       store.generation() === generation &&
       store.version(game) === version &&
-      epochOf(game) === epoch
+      epochOf(game, slot) === epoch &&
+      (scope === 'achievements' ||
+        ((scope === 'install' ||
+          (listGroupEpochs.get(game)?.meta ?? 0) === (groups?.meta ?? 0)) &&
+          (listGroupEpochs.get(game)?.install ?? 0) === (groups?.install ?? 0)))
   }
 
   function settingsCurrent(appName: string) {
@@ -168,7 +233,8 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
   function holdFetches(
     runner: Runner,
     appName: string,
-    until: Promise<unknown>
+    until: Promise<unknown>,
+    holdSettings = true
   ) {
     const settled = until.then(
       () => undefined,
@@ -177,7 +243,7 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
     const game = detailsKey(runner, appName)
     const settings = settingsKey(appName)
     holds.set(game, settled)
-    holds.set(settings, settled)
+    if (holdSettings) holds.set(settings, settled)
     void settled.then(() => {
       if (holds.get(game) === settled) holds.delete(game)
       if (holds.get(settings) === settled) holds.delete(settings)
@@ -215,31 +281,122 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
   }
 
   function fetchInto<T>(spec: ReadSpec<T>): Promise<T | null> {
-    const epoch = epochOf(spec.key)
+    const epoch = epochOf(spec.key, spec.slot)
     const generation = store.generation()
     const version = store.version(spec.key)
     const force = !!spec.options.force
     const id = `${spec.key}|${spec.slot}|${generation}|${version}|${epoch}|${force}`
     const running = inflight.get(id)
-    if (running) return running as Promise<T | null>
+    if (running && !deps.scheduler?.isCancelled(id)) {
+      joinRequest(id, spec.options)
+      return running as Promise<T | null>
+    }
 
+    const effective = {
+      ...spec.options,
+      priority: spec.options.priority ?? 0,
+      backgroundRequested: spec.options.priority === 2
+    }
+    let lane: DetailsLane = 'local'
+    let network = false
+    if (spec.kind === 'getWikiGameInfo') {
+      lane = 'wiki'
+      network = true
+    } else if (spec.kind === 'getInstallInfo') {
+      lane =
+        effective.installInfoBackground && effective.priority === 2
+          ? 'installInfoBackground'
+          : 'cli'
+      network = true
+    } else if (
+      spec.kind === 'getLaunchOptions' &&
+      spec.runner === 'legendary'
+    ) {
+      lane = 'cli'
+      network = true
+    } else if (spec.kind === 'getAchievements' && spec.runner === 'gog') {
+      lane = 'cli'
+      network = true
+    } else if (
+      spec.kind === 'getExtraInfo' &&
+      (spec.runner === 'gog' || spec.runner === 'legendary')
+    ) {
+      lane = 'storeApi'
+      network = true
+    }
+    requestOptions.set(id, effective)
+    const intent = deps.scheduler?.prepare({
+      id,
+      key: spec.key,
+      slot: spec.slot,
+      lane,
+      network,
+      priority: effective.priority,
+      backgroundRequested: effective.backgroundRequested,
+      backgroundLane: effective.priority === 2 ? lane : undefined
+    })
     const run = (async (): Promise<T | null> => {
       await holds.get(spec.key)
+      effective.priority = intent?.priority ?? effective.priority
+      effective.backgroundRequested =
+        intent?.backgroundRequested ?? effective.backgroundRequested
       if (
+        intent?.cancelled ||
         store.generation() !== generation ||
         store.version(spec.key) !== version ||
-        epochOf(spec.key) !== epoch
-      )
-        return store.getSlot<T>(spec.key, spec.slot)?.data ?? null
-      counts[spec.kind] = (counts[spec.kind] ?? 0) + 1
+        epochOf(spec.key, spec.slot) !== epoch
+      ) {
+        if (!effective.backgroundRequested && spec.options.priority !== 1)
+          return store.getSlot<T>(spec.key, spec.slot)?.data ?? null
+        const error = new Error('Detail request cancelled before dispatch')
+        error.name = 'DetailsRequestCancelled'
+        throw error
+      }
       const sig = listSigAtStart(spec)
       const gameInfo = spec.runner
         ? deps.getLibraryGame(spec.runner, spec.appName)
         : undefined
       let value: T
       try {
-        value = await spec.fetch()
+        const priority = effective.priority
+        if (priority < 2 && lane === 'installInfoBackground') lane = 'cli'
+        const fetch = async (lane: DetailsLane = 'local') => {
+          if (
+            store.generation() !== generation ||
+            store.version(spec.key) !== version ||
+            epochOf(spec.key, spec.slot) !== epoch ||
+            (isExtraInfoSlot(spec.slot) &&
+              spec.slot !== extraInfoSlot(deps.getLanguage()))
+          ) {
+            if (!effective.backgroundRequested && spec.options.priority !== 1)
+              return store.getSlot<T>(spec.key, spec.slot)?.data as T
+            const error = new Error('Detail request cancelled before dispatch')
+            error.name = 'DetailsRequestCancelled'
+            throw error
+          }
+          counts[spec.kind] = (counts[spec.kind] ?? 0) + 1
+          return spec.fetch({
+            ...effective,
+            installInfoBackground: lane === 'installInfoBackground'
+          })
+        }
+        value = deps.scheduler
+          ? await deps.scheduler.enqueue(
+              {
+                id,
+                key: spec.key,
+                slot: spec.slot,
+                lane,
+                network,
+                priority,
+                backgroundRequested: effective.backgroundRequested
+              },
+              fetch
+            )
+          : await fetch(lane)
       } catch (error) {
+        if (error instanceof Error && error.name === 'DetailsRequestCancelled')
+          throw error
         const previous = store.getSlot<T>(spec.key, spec.slot)
         if (previous && !force) return previous.data
         throw error
@@ -247,9 +404,11 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
       const previous = store.getSlot<T>(spec.key, spec.slot)
       // a Refresh started meanwhile: its own fetch decides what is stored
       if (
-        epochOf(spec.key) !== epoch ||
+        epochOf(spec.key, spec.slot) !== epoch ||
         store.generation() !== generation ||
-        store.version(spec.key) !== version
+        store.version(spec.key) !== version ||
+        (isExtraInfoSlot(spec.slot) &&
+          spec.slot !== extraInfoSlot(deps.getLanguage()))
       ) {
         return previous ? previous.data : value
       }
@@ -262,20 +421,29 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
         }
         return previous && previous.data != null ? previous.data : value
       }
-      const stored =
-        previous && sameData(previous.data, value)
-          ? previous.data
-          : store.setSlot<T>(spec.key, spec.slot, value).data
-      if (gameInfo)
-        store.patchEntry(spec.key, (entry) =>
-          entry.gameInfo === gameInfo ? entry : { ...entry, gameInfo }
-        )
-      if (sig) recordListSig(spec.key, sig, spec.slot)
-      return stored
+      return store.batchUpdates(
+        () => {
+          const stored =
+            previous && sameData(previous.data, value)
+              ? previous.data
+              : store.setSlot<T>(spec.key, spec.slot, value).data
+          if (gameInfo)
+            store.patchEntry(spec.key, (entry) =>
+              entry.gameInfo === gameInfo ? entry : { ...entry, gameInfo }
+            )
+          if (sig) recordListSig(spec.key, sig, spec.slot)
+          return stored
+        },
+        (effective.priority ?? 0) > 0
+      )
     })()
     inflight.set(id, run)
     const forget = () => {
-      if (inflight.get(id) === run) inflight.delete(id)
+      if (inflight.get(id) === run) {
+        inflight.delete(id)
+        requestOptions.delete(id)
+        deps.scheduler?.release(id)
+      }
     }
     run.then(forget, forget)
     return run
@@ -297,12 +465,23 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
     const key = detailsKey(runner, appName)
     const cached = store.getSlot<WikiInfo>(key, 'wikiInfo')
     if (cached && !options.force) return Promise.resolve(cached.data)
-    const epoch = epochOf(key)
+    const epoch = epochOf(key, 'wikiInfo')
     const generation = store.generation()
     const version = store.version(key)
     const id = `${key}|${generation}|${version}|${epoch}|${!!options.force}`
     const running = wikiInflight.get(id)
-    if (running) return running
+    if (
+      running &&
+      !deps.scheduler?.isCancelled(
+        `${key}|wikiInfo|${generation}|${version}|${epoch}|${!!options.force}`
+      )
+    ) {
+      joinRequest(
+        `${key}|wikiInfo|${generation}|${version}|${epoch}|${!!options.force}`,
+        options
+      )
+      return running
+    }
 
     const run = (async () => {
       if (options.force) {
@@ -328,21 +507,27 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
         failureRejects: false
       })
       if (
-        epochOf(key) !== epoch ||
+        epochOf(key, 'wikiInfo') !== epoch ||
         store.generation() !== generation ||
         store.version(key) !== version
       )
         return info
-      if (!isEmptyWikiInfo(info)) {
-        store.patchEntry(key, (entry) =>
-          entry.wikiEmpty ? { ...entry, wikiEmpty: 0 } : entry
-        )
-      } else if (!store.getSlot(key, 'wikiInfo') && deps.isOnline()) {
-        // a game that really has no third-party data stops being retried
-        const wikiEmpty = (store.getEntry(key)?.wikiEmpty ?? 0) + 1
-        store.patchEntry(key, (entry) => ({ ...entry, wikiEmpty }))
-        if (wikiEmpty >= WIKI_EMPTY_LIMIT) store.setSlot(key, 'wikiInfo', null)
-      }
+      store.batchUpdates(
+        () => {
+          if (!isEmptyWikiInfo(info)) {
+            store.patchEntry(key, (entry) =>
+              entry.wikiEmpty ? { ...entry, wikiEmpty: 0 } : entry
+            )
+          } else if (!store.getSlot(key, 'wikiInfo') && deps.isOnline()) {
+            // a game that really has no third-party data stops being retried
+            const wikiEmpty = (store.getEntry(key)?.wikiEmpty ?? 0) + 1
+            store.patchEntry(key, (entry) => ({ ...entry, wikiEmpty }))
+            if (wikiEmpty >= WIKI_EMPTY_LIMIT)
+              store.setSlot(key, 'wikiInfo', null)
+          }
+        },
+        (options.priority ?? 0) > 0
+      )
       return info
     })()
     wikiInflight.set(id, run)
@@ -418,8 +603,10 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
         runner,
         appName,
         options,
-        fetch: async () =>
-          deps.getInstallInfo(appName, runner, installPlatform),
+        fetch: async (options) =>
+          options.installInfoBackground && deps.getInstallInfoBackground
+            ? deps.getInstallInfoBackground(appName, runner, installPlatform)
+            : deps.getInstallInfo(appName, runner, installPlatform),
         // null means "Cannot get game info"
         isFailure: (v) => !v
       })
@@ -489,6 +676,54 @@ export function createGameDetailsApi(store: GameDetailsStore, deps: ApiDeps) {
         isFailure: (value) => !Array.isArray(value)
       })) ?? [],
 
+    scheduleOperation<T>(
+      runner: Runner,
+      appName: string,
+      work: () => Promise<T>,
+      priority: DetailsPriority = 0,
+      network = false
+    ) {
+      const key = detailsKey(runner, appName)
+      return deps.scheduler
+        ? deps.scheduler.enqueue(
+            {
+              id: `${key}|barrier|${++operation}`,
+              key,
+              lane: 'local',
+              network,
+              priority
+            },
+            work
+          )
+        : work()
+    },
+    beginListUpdate(
+      runner: Runner,
+      appName: string,
+      meta: boolean,
+      install: boolean
+    ) {
+      const key = detailsKey(runner, appName)
+      const previous = listGroupEpochs.get(key) ?? { meta: 0, install: 0 }
+      const groups = {
+        meta: previous.meta + (meta ? 1 : 0),
+        install: previous.install + (install ? 1 : 0)
+      }
+      listGroupEpochs.set(key, groups)
+      if (install) {
+        const settings = settingsKey(appName)
+        epochs.set(settings, epochOf(settings) + 1)
+      }
+      const generation = store.generation()
+      const version = store.version(key)
+      const epoch = epochOf(key)
+      return () =>
+        store.generation() === generation &&
+        store.version(key) === version &&
+        epochOf(key) === epoch &&
+        (!meta || listGroupEpochs.get(key)?.meta === groups.meta) &&
+        (!install || listGroupEpochs.get(key)?.install === groups.install)
+    },
     beginRefresh,
     settingsCurrent,
     invalidateAllSettings: () => {

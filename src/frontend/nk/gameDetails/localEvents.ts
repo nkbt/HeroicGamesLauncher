@@ -1,12 +1,13 @@
 // nk: #5 - real local changes of a game update its cached details, whether
 // its game page is open or not (see statusInvalidation.ts for the events).
-import type { InstallPlatform, Runner } from 'common/types'
+import type { GameInfo, InstallPlatform, Runner } from 'common/types'
 import type {
   InvalidateGameDetailsRequest,
   InvalidateGameDetailsResult
 } from 'common/types/nk/gameDetails'
 import type { GameDetailsApi } from './api'
 import type { GameDetailsStore } from './store'
+import { listSigOf } from './logic'
 import { forgetStatus } from './statusMemo'
 import { detailsKey, isInstallInfoSlot, settingsKey } from './types'
 
@@ -16,6 +17,7 @@ export interface LocalEventDeps {
   invalidateGameDetailsCaches: (
     request: InvalidateGameDetailsRequest
   ) => Promise<InvalidateGameDetailsResult>
+  getLibraryGame?: (runner: Runner, appName: string) => GameInfo | undefined
   isOnline: () => boolean
   warn?: (...args: unknown[]) => void
 }
@@ -25,6 +27,7 @@ export function createLocalEvents({
   store,
   invalidateGameDetailsCaches,
   isOnline,
+  getLibraryGame,
   warn = console.warn
 }: LocalEventDeps) {
   async function settle(appName: string, work: Array<Promise<unknown>>) {
@@ -48,14 +51,27 @@ export function createLocalEvents({
   async function installChanged(appName: string, runner: Runner) {
     const key = detailsKey(runner, appName)
     const settings = settingsKey(appName)
-    const current = gameDetailsApi.beginRefresh(runner, appName)
+    const gameInfo = getLibraryGame?.(runner, appName)
+    const installEventBaseline = gameInfo
+      ? listSigOf(gameInfo).install
+      : undefined
+    const current = gameDetailsApi.beginRefresh(runner, appName, 'install')
     const settingsCurrent = gameDetailsApi.settingsCurrent(appName)
-    store.patchEntry(key, (entry) => ({ ...entry, pendingInstall: true }))
-    const invalidation = invalidateGameDetailsCaches({
-      appName,
-      runner,
-      scope: 'install'
-    })
+    store.patchEntry(key, (entry) => ({
+      ...entry,
+      pendingInstall: true,
+      installEventBaseline:
+        entry.observedListSig?.install ??
+        entry.listSig?.install ??
+        installEventBaseline
+    }))
+    const invalidation = gameDetailsApi.scheduleOperation(runner, appName, () =>
+      invalidateGameDetailsCaches({
+        appName,
+        runner,
+        scope: 'install'
+      })
+    )
     gameDetailsApi.holdFetches(runner, appName, invalidation)
     forgetStatus(appName)
     try {
@@ -112,7 +128,25 @@ export function createLocalEvents({
     }
     const succeeded = await settle(appName, refills)
     if (current() && succeeded && isOnline())
-      store.patchEntry(key, (entry) => ({ ...entry, pendingInstall: false }))
+      store.patchEntry(key, (entry) => {
+        const gameInfo = getLibraryGame?.(runner, appName)
+        const install = gameInfo ? listSigOf(gameInfo).install : undefined
+        const matched =
+          install !== undefined &&
+          entry.installEventBaseline !== undefined &&
+          install !== entry.installEventBaseline
+        const pendingListSig = { ...entry.pendingListSig }
+        delete pendingListSig.install
+        return {
+          ...entry,
+          pendingInstall: false,
+          pendingListSig,
+          installEventBaseline: matched
+            ? undefined
+            : entry.installEventBaseline,
+          listSig: matched ? { ...entry.listSig, install } : entry.listSig
+        }
+      })
   }
 
   /**
@@ -124,15 +158,20 @@ export function createLocalEvents({
     const key = detailsKey(runner, appName)
     const settings = settingsKey(appName)
 
-    const current = gameDetailsApi.beginRefresh(runner, appName)
+    const current = gameDetailsApi.beginRefresh(runner, appName, 'achievements')
     const settingsCurrent = gameDetailsApi.settingsCurrent(appName)
     store.patchEntry(key, (entry) => ({ ...entry, pendingPlay: true }))
     if (runner === 'gog') {
-      const invalidation = invalidateGameDetailsCaches({
-        appName,
+      const invalidation = gameDetailsApi.scheduleOperation(
         runner,
-        scope: 'achievements'
-      })
+        appName,
+        () =>
+          invalidateGameDetailsCaches({
+            appName,
+            runner,
+            scope: 'achievements'
+          })
+      )
       gameDetailsApi.holdFetches(runner, appName, invalidation)
       try {
         const result = await invalidation

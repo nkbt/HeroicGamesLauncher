@@ -18,6 +18,8 @@ interface ResetEvent {
 interface ResetOptions {
   getMainWindow: () => { webContents: ResetSender } | null | undefined
   rendererEntry: string
+  beforeReset?: () => void
+  resetFailed?: () => void
   timeoutMs?: number
 }
 interface ResetRegistry {
@@ -34,7 +36,13 @@ const guarded = new WeakMap<ResetRegistry, boolean>()
 export function guardResetHeroic(
   registry: ResetRegistry,
   warn: (message: string) => void,
-  { getMainWindow, rendererEntry, timeoutMs = 10000 }: ResetOptions
+  {
+    getMainWindow,
+    rendererEntry,
+    beforeReset,
+    resetFailed,
+    timeoutMs = 10000
+  }: ResetOptions
 ) {
   if (guarded.has(registry)) return guarded.get(registry)!
   const originals = registry.listeners('resetHeroic')
@@ -157,12 +165,14 @@ export function guardResetHeroic(
       return
     }
     try {
+      beforeReset?.()
       original.call(
         registry,
         request.event as never,
         ...(request.args as never[])
       )
     } catch (error) {
+      resetFailed?.()
       try {
         request.frame.send('resetGameDetailsCancelled', requestId)
       } catch {

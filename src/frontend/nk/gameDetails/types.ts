@@ -38,6 +38,9 @@ export interface GameDetailsEntry {
   gameInfo?: GameInfo
   /** signatures of the library list data the slots were fetched with */
   listSig?: ListSig
+  observedListSig?: ListSig
+  pendingListSig?: ListSig
+  installEventBaseline?: string
   /** consecutive all-empty wiki results (3 store the "none" marker) */
   wikiEmpty?: number
   pendingInstall?: boolean

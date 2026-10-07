@@ -32,9 +32,16 @@ import type {
 } from 'common/types'
 import { getStatusLabel } from 'frontend/hooks/constants'
 import ContextProvider from 'frontend/state/ContextProvider'
-import { gameDetailsApi, gameDetailsStore, syncLibraries } from './instance'
+import {
+  gameDetailsApi,
+  gameDetailsStore,
+  gameDetailsScheduler,
+  getLibraryGame,
+  syncLibraries
+} from './instance'
 import { installPlatformOf, isNotInstallable, wikiForGamePage } from './logic'
 import { refreshState } from './refresh'
+import { warmDetailsArt } from './art'
 import { peekStatus, subscribeStatus } from './statusMemo'
 import {
   detailsKey,
@@ -258,19 +265,35 @@ export function seedGameStatus(
  * the list signatures; details of removed games are dropped).
  */
 export function useLibrarySync() {
-  const { epic, gog, amazon, zoom, sideloadedLibrary } =
+  const { epic, gog, amazon, zoom, sideloadedLibrary, refreshing } =
     useContext(ContextProvider)
   const hydrated = useStore(gameDetailsStore.state, (s) => s.hydrated)
   useEffect(() => {
-    syncLibraries({
-      legendary: epic.library,
-      gog: gog.library,
-      nile: amazon.library,
-      zoom: zoom.library,
-      sideload: sideloadedLibrary
-    })
+    syncLibraries(
+      {
+        legendary: epic.library,
+        gog: gog.library,
+        nile: amazon.library,
+        zoom: zoom.library,
+        sideload: sideloadedLibrary
+      },
+      {
+        legendary: epic.username,
+        gog: gog.username,
+        nile: amazon.user_id ?? amazon.username,
+        zoom: zoom.enabled ? zoom.username : ''
+      },
+      refreshing
+    )
   }, [
     hydrated,
+    refreshing,
+    epic.username,
+    gog.username,
+    amazon.user_id,
+    amazon.username,
+    zoom.username,
+    zoom.enabled,
     epic.library,
     gog.library,
     amazon.library,
@@ -327,4 +350,29 @@ export function useProtonDBurlState(
     },
     () => `https://www.protondb.com/search?q=${title}`
   )
+}
+
+// nk: #5 - the routed page warms the exact decoded detail-art sources.
+export function useDetailsArt(runner: Runner, appName: string) {
+  const gameInfo = useStore(
+    gameDetailsStore.state,
+    (state) =>
+      state.entries[detailsKey(runner, appName)]?.gameInfo ??
+      getLibraryGame(runner, appName)
+  )
+  useEffect(() => {
+    if (gameInfo)
+      void gameDetailsScheduler
+        .enqueue(
+          {
+            id: `${detailsKey(runner, appName)}|art`,
+            key: detailsKey(runner, appName),
+            lane: 'local',
+            network: true,
+            priority: 0
+          },
+          () => warmDetailsArt(gameInfo)
+        )
+        .catch(() => undefined)
+  }, [gameInfo, runner, appName])
 }

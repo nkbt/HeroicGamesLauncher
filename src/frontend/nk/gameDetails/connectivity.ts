@@ -9,12 +9,16 @@ interface ConnectivityApi {
   getConnectivityStatus?: () => Promise<Connectivity>
 }
 
-export function createDetailsConnectivity(onOnline: () => void) {
+export function createDetailsConnectivity(
+  onOnline: () => void,
+  onChange?: (status: string) => void
+) {
   let status = 'check-online'
   let changes = 0
   function update(connectivity: Connectivity) {
     const wasOnline = status === 'online'
     status = connectivity.status
+    onChange?.(status)
     if (!wasOnline && status === 'online') onOnline()
   }
   return {

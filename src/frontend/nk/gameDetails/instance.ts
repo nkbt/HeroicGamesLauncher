@@ -2,10 +2,15 @@
 // first imported (hasStatus imports it, so at startup): hydrates from
 // IndexedDB and listens to game status events for the life of the renderer.
 import i18next from 'i18next'
+import { createDetailsScheduler } from './scheduler'
 import type { GameInfo, Runner } from 'common/types'
 import { getInstallInfo } from 'frontend/helpers'
 import { createGameDetailsApi, type DetailsIpc } from './api'
-import { type Libraries, indexLibraries, removedGames } from './librarySync'
+import { type Libraries, indexLibraries } from './librarySync'
+import { createLibraryAuthority } from './libraryAuthority'
+import { createDetailsReconciliation } from './reconcile'
+import { createDetailsPrefetch } from './prefetch'
+import { sameData } from './logic'
 import { IndexedDbPersistence, MemoryPersistence } from './persistence'
 import { createGameDetailsStore } from './store'
 import { createLocalEvents } from './localEvents'
@@ -27,9 +32,15 @@ export const gameDetailsStore = createGameDetailsStore(
   }
 )
 
-const detailsConnectivity = createDetailsConnectivity(() => {
-  void localEvents.reconnect()
+export const gameDetailsScheduler = createDetailsScheduler({
+  isEnabled: () => localStorage.getItem('nk.prefetchGameDetails') !== 'false'
 })
+const detailsConnectivity = createDetailsConnectivity(
+  () => {
+    void localEvents.reconnect()
+  },
+  (status) => gameDetailsScheduler.update({ online: status === 'online' })
+)
 
 let libraryGames = new Map<DetailsKey, GameInfo>()
 
@@ -40,7 +51,22 @@ export function getLibraryGame(runner: Runner, appName: string) {
 
 export const gameDetailsApi = createGameDetailsApi(gameDetailsStore, {
   ipc: () => window.api as unknown as DetailsIpc,
+  scheduler: gameDetailsScheduler,
   getInstallInfo,
+  getInstallInfoBackground: (appName, runner, installPlatform, build, branch) =>
+    window.api.getInstallInfoBackground(
+      appName,
+      runner,
+      runner === 'legendary'
+        ? installPlatform
+        : installPlatform === 'Windows'
+          ? 'windows'
+          : installPlatform === 'Mac'
+            ? 'osx'
+            : installPlatform,
+      build,
+      branch
+    ),
   platform: window.platform,
   getLanguage: () => i18next.language ?? '',
   isOnline: detailsConnectivity.isOnline,
@@ -51,16 +77,75 @@ export const gameDetailsApi = createGameDetailsApi(gameDetailsStore, {
  * The library lists changed: remember every game's list entry and drop the
  * cached details of games no longer in a loaded store library.
  */
-export function syncLibraries(libraries: Libraries) {
-  libraryGames = indexLibraries(libraries)
+const libraryAuthority = createLibraryAuthority()
+export const gameDetailsPrefetch = createDetailsPrefetch(
+  gameDetailsApi,
+  gameDetailsStore,
+  window.platform,
+  () => i18next.language ?? ''
+)
+export const gameDetailsReconciliation = createDetailsReconciliation(
+  gameDetailsStore,
+  gameDetailsApi,
+  (request) => window.api.invalidateGameDetailsCaches(request),
+  window.platform,
+  () => i18next.language ?? ''
+)
+export function syncLibraries(
+  libraries: Libraries,
+  accounts: Partial<Record<Runner, string | undefined>> = {},
+  refreshing = false
+) {
+  const authoritative = libraryAuthority(libraries, accounts, refreshing)
+  const known = new Map(libraryGames)
+  const indexed = indexLibraries(authoritative)
+  for (const key of known.keys())
+    if (authoritative[key.slice(0, key.indexOf(':')) as Runner] !== undefined)
+      known.delete(key)
+  libraryGames = new Map([...known, ...indexed])
   for (const [key, gameInfo] of libraryGames) {
     const entry = gameDetailsStore.getEntry(key)
-    if (entry && entry.gameInfo !== gameInfo)
+    if (
+      entry &&
+      entry.gameInfo !== gameInfo &&
+      !sameData(entry.gameInfo, gameInfo)
+    )
       gameDetailsStore.patchEntry(key, (entry) => ({ ...entry, gameInfo }))
   }
   if (!gameDetailsStore.isHydrated()) return
-  const removed = removedGames(gameDetailsStore.keys(), libraries, libraryGames)
+  const removed = gameDetailsStore
+    .keys()
+    .filter(
+      (key) =>
+        !key.startsWith('settings:') &&
+        authoritative[key.slice(0, key.indexOf(':')) as Runner] !== undefined &&
+        !libraryGames.has(key)
+    )
   if (removed.length) gameDetailsStore.removeKeys(removed)
+  const owned = new Set(
+    [...libraryGames.values()].map((gameInfo) => gameInfo.app_name)
+  )
+  const removedAppNames = new Set(
+    removed.map((key) => key.slice(key.indexOf(':') + 1))
+  )
+  gameDetailsStore.removeKeys(
+    gameDetailsStore
+      .keys()
+      .filter(
+        (key) =>
+          key.startsWith('settings:') &&
+          removedAppNames.has(key.slice('settings:'.length)) &&
+          !owned.has(key.slice('settings:'.length)) &&
+          !gameDetailsStore
+            .keys()
+            .some(
+              (game) =>
+                !game.startsWith('settings:') &&
+                game.slice(game.indexOf(':') + 1) ===
+                  key.slice('settings:'.length)
+            )
+      )
+  )
 }
 
 /** Refresh checks availability and tells this game's status consumers. */
@@ -97,6 +182,7 @@ export function clearCaches(showDialog?: boolean) {
 const localEvents = createLocalEvents({
   gameDetailsApi,
   store: gameDetailsStore,
+  getLibraryGame,
   invalidateGameDetailsCaches: async (request) =>
     window.api.invalidateGameDetailsCaches(request),
   isOnline: detailsConnectivity.isOnline
@@ -107,6 +193,7 @@ if (typeof window.api.handleResetGameDetails === 'function')
 
 function listenToGameStatus() {
   const track = createStatusTracker()
+  const statuses = new Map<string, string>()
   const operations = new Map<
     DetailsKey,
     { runner: Runner; appName: string; generation: number; version: number }
@@ -119,6 +206,26 @@ function listenToGameStatus() {
         )
     const runner =
       status.runner ?? (matching.length === 1 ? matching[0].runner : undefined)
+    const statusKey = runner
+      ? detailsKey(runner, status.appName)
+      : status.appName
+    if (
+      status.status === 'done' ||
+      status.status === 'error' ||
+      status.status === 'canceled'
+    )
+      statuses.delete(statusKey)
+    else statuses.set(statusKey, status.status)
+    const active = [...statuses.values()]
+    gameDetailsScheduler.update({
+      playing: active.includes('playing'),
+      launching: active.includes('launching'),
+      downloading:
+        active.includes('installing') ||
+        active.includes('updating') ||
+        active.includes('repairing') ||
+        active.includes('extracting')
+    })
     if (!runner) return
     const key = detailsKey(runner, status.appName)
     const operation = operations.get(key)

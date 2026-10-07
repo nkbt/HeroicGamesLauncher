@@ -2,7 +2,7 @@
 //
 // The IPC channel is added to upstream's `AsyncIPCFunctions` through
 // declaration merging, so `src/common/types/ipc.ts` stays untouched.
-import type { Runner } from 'common/types'
+import type { Runner, InstallInfo, InstallPlatform } from 'common/types'
 import type { ImageRefreshResult } from './imageCache'
 
 /**
@@ -43,6 +43,13 @@ declare module 'common/types/ipc' {
     gameDetailsResetReady: (requestId: number, cleared: boolean) => void
   }
   interface AsyncIPCFunctions {
+    getInstallInfoBackground: (
+      appName: string,
+      runner: Runner,
+      installPlatform: InstallPlatform,
+      build?: string,
+      branch?: string
+    ) => Promise<InstallInfo | null>
     invalidateGameDetailsCaches: (
       request: InvalidateGameDetailsRequest
     ) => Promise<InvalidateGameDetailsResult>

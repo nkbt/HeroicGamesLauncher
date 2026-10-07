@@ -43,9 +43,12 @@ function hash(text: string): string {
  * Signatures of the library list fields a game's details depend on, in
  * three groups. Volatile fields (status, progress, ...) are not included.
  */
+const signatures = new WeakMap<GameInfo, Required<ListSig>>()
 export function listSigOf(game: GameInfo): Required<ListSig> {
+  const cached = signatures.get(game)
+  if (cached) return cached
   const { extra, install } = game
-  return {
+  const listSig = {
     meta: hash(
       stableStringify([
         game.title,
@@ -71,10 +74,13 @@ export function listSigOf(game: GameInfo): Required<ListSig> {
         game.art_cover,
         game.art_square,
         game.art_logo,
-        game.art_background
+        game.art_background,
+        game.overrides?.art_cover
       ])
     )
   }
+  signatures.set(game, listSig)
+  return listSig
 }
 
 /**

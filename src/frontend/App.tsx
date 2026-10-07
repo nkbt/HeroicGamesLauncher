@@ -22,6 +22,7 @@ import { TourProvider } from './state/TourContext'
 import { InstallGameWrapper } from './screens/Library/components/InstallModal'
 import { SettingsModalWrapper } from './screens/Settings/components/SettingsModal'
 import AnalyticsDialog from './screens/Settings/components/AnalyticsDialog'
+import GameDetailsPrefetcher from './nk/gameDetails/GameDetailsPrefetcher' // nk: #5
 import KeepAliveLibrary from './nk/keepAliveLibrary/KeepAliveLibrary' // nk: #6
 import { useLibraryImagePrefetch } from './nk/libraryImages/useLibraryImagePrefetch' // nk: #4
 
@@ -100,6 +101,7 @@ function Root() {
               <LogFileUploadDialog />
               <UploadedLogFilesList />
               <Outlet />
+              <GameDetailsPrefetcher /* nk: #5 */ />
               <KeepAliveLibrary /* nk: #6 */ />
               <AnalyticsDialog />
             </main>

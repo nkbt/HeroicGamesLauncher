@@ -52,6 +52,9 @@ export function createGameDetailsStore(
   const hydrationReady = new Promise<void>((resolve) => {
     ready = resolve
   })
+  let background = false
+  let backgroundTimer: ReturnType<typeof setTimeout> | null = null
+  let lastNotification = -Infinity
   let notifyScheduled = false
   const pendingKeys = new Set<DetailsKey>()
   // slots dropped before hydration finished must not come back from disk
@@ -67,12 +70,28 @@ export function createGameDetailsStore(
   /** Publishes the current entries to subscribers now. */
   function notify() {
     notifyScheduled = false
+    lastNotification = Date.now()
     if (state.getState().entries !== entries || !state.getState().hydrated) {
       state.setState({ entries, hydrated })
     }
   }
 
   function scheduleNotification() {
+    if (!background && backgroundTimer !== null) {
+      clearTimeout(backgroundTimer)
+      backgroundTimer = null
+    }
+    if (background && !notifyScheduled) {
+      if (backgroundTimer === null)
+        backgroundTimer = setTimeout(
+          () => {
+            backgroundTimer = null
+            notify()
+          },
+          Math.max(0, 250 - (Date.now() - lastNotification))
+        )
+      return
+    }
     if (notifyScheduled) return
     notifyScheduled = true
     scheduleNotify(notify)
@@ -295,6 +314,15 @@ export function createGameDetailsStore(
 
   return {
     state,
+    batchUpdates<T>(work: () => T, speculative: boolean) {
+      const previous = background
+      background = speculative
+      try {
+        return work()
+      } finally {
+        background = previous
+      }
+    },
     getEntry,
     getSlot,
     setSlot,

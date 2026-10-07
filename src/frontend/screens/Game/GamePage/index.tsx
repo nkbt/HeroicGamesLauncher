@@ -1,3 +1,4 @@
+import { useDetailsArt } from 'frontend/nk/gameDetails/hooks' // nk: #5
 import './index.css'
 
 import React, { useContext, useEffect, useState } from 'react' // nk: #5
@@ -66,6 +67,7 @@ import * as nk from 'frontend/nk/gameDetails' // nk: #5
 const GamePage = React.memo(function GamePage(): JSX.Element | null {
   // nk: #5
   const { appName, runner } = useParams() as { appName: string; runner: Runner }
+  useDetailsArt(runner, appName) // nk: #5
   const location = useLocation() as {
     state: { fromDM: boolean; gameInfo: GameInfo }
   }

@@ -9,6 +9,11 @@
 import { ipcMain } from 'electron'
 import i18next from 'i18next'
 import CacheStore from 'backend/cache'
+import {
+  memoizeCacheStore,
+  suppressMemoizedCaches,
+  resumeMemoizedCaches
+} from '../cacheMemoization'
 import { addHandler, addListener } from 'backend/ipc'
 import { logInfo, logWarning, LogPrefix } from 'backend/logger'
 import { isOnline } from 'backend/online_monitor'
@@ -140,6 +145,8 @@ async function invalidateGameDetails({
 export function initGameDetails() {
   guardResetHeroic(ipcMain as never, warn, {
     getMainWindow,
+    beforeReset: suppressMemoizedCaches,
+    resetFailed: resumeMemoizedCaches,
     rendererEntry:
       process.env.ELECTRON_RENDERER_URL ||
       pathToFileURL(join(publicDir, 'index.html')).href
@@ -151,6 +158,7 @@ export function initGameDetails() {
   }
 
   try {
+    memoizeCacheStore(gogExtraInfoStore, warn)
     initGogExtraInfoCache()
   } catch (error) {
     warn(`[nk] game details: GOG extra info init failed: ${String(error)}`)

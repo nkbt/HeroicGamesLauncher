@@ -114,14 +114,24 @@ export function refreshGameDetails(
     }
     report(key, { ...progress })
 
-    const invalidation = deps.invalidateGameDetailsCaches({
-      appName,
+    const invalidation = deps.gameDetailsApi.scheduleOperation(
       runner,
-      scope: 'all',
-      artUrls: deps.online
-        ? [...gamePageArtUrls(gameInfo), ...getLibraryCardImageUrls([gameInfo])]
-        : undefined
-    })
+      appName,
+      () =>
+        deps.invalidateGameDetailsCaches({
+          appName,
+          runner,
+          scope: 'all',
+          artUrls: deps.online
+            ? [
+                ...gamePageArtUrls(gameInfo),
+                ...getLibraryCardImageUrls([gameInfo])
+              ]
+            : undefined
+        }),
+      0,
+      deps.online
+    )
     deps.gameDetailsApi.holdFetches(runner, appName, invalidation)
     let backendDropped = false
     try {

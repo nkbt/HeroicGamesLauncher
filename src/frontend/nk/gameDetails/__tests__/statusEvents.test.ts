@@ -1,3 +1,4 @@
+jest.mock('i18next', () => ({ __esModule: true, default: { language: 'en' } }))
 import type { GameSettings } from 'common/types'
 import type { MemoryPersistence } from '../persistence'
 
@@ -19,6 +20,9 @@ function setup(
   window.api.requestGameSettings = jest.fn(() =>
     Promise.resolve({ wineVersion: 'updated' } as unknown as GameSettings)
   )
+  let gameDetailsScheduler!: (typeof import('../instance'))['gameDetailsScheduler']
+  let gameDetailsPrefetch!: (typeof import('../instance'))['gameDetailsPrefetch']
+  let setLanguage!: (language: string) => void
   let gameDetailsStore!: (typeof import('../instance'))['gameDetailsStore']
   let gameDetailsApi!: (typeof import('../instance'))['gameDetailsApi']
   jest.isolateModules(() => {
@@ -31,10 +35,25 @@ function setup(
     }
     const instance =
       jest.requireActual<typeof import('../instance')>('../instance')
+    gameDetailsScheduler = instance.gameDetailsScheduler
+    gameDetailsPrefetch = instance.gameDetailsPrefetch
+    const language = jest.requireMock<{ default: { language: string } }>(
+      'i18next'
+    ).default
+    setLanguage = (value) => {
+      language.language = value
+    }
     gameDetailsStore = instance.gameDetailsStore
     gameDetailsApi = instance.gameDetailsApi
   })
-  return { status, gameDetailsStore, gameDetailsApi }
+  return {
+    status,
+    gameDetailsStore,
+    gameDetailsApi,
+    gameDetailsScheduler,
+    gameDetailsPrefetch,
+    setLanguage
+  }
 }
 
 test('runner-less download completion uses its preceding operation runner before hydration', async () => {
@@ -68,6 +87,7 @@ test('runner-less download completion uses its preceding operation runner before
     status: 'installing'
   })
   status({} as never, { appName: 'game-a', status: 'done' })
+  await Promise.resolve()
   expect(window.api.invalidateGameDetailsCaches).toHaveBeenCalledWith({
     appName: 'game-a',
     runner: 'gog',
@@ -99,6 +119,7 @@ test('runner-less done after cache clear cannot revive the old operation, and a 
   })
   await gameDetailsStore.clearAll()
   status({} as never, { appName: 'game-b', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).not.toHaveBeenCalled()
   expect(gameDetailsStore.getEntry('gog:game-b')).toBeUndefined()
   status({} as never, {
@@ -107,6 +128,7 @@ test('runner-less done after cache clear cannot revive the old operation, and a 
     status: 'installing'
   })
   status({} as never, { appName: 'game-b', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).toHaveBeenCalledTimes(1)
   expect(gameDetailsStore.getEntry('gog:game-b')?.pendingInstall).toBe(true)
   await gameDetailsStore.clearAll()
@@ -124,6 +146,7 @@ test('runner-less done after removal cannot restore a removed game and does not 
   status({} as never, { appName: 'game-c', runner: 'gog', status: 'updating' })
   gameDetailsStore.removeKeys(['gog:game-c'])
   status({} as never, { appName: 'game-c', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).not.toHaveBeenCalled()
   expect(gameDetailsStore.getEntry('gog:game-c')).toBeUndefined()
   expect(gameDetailsStore.getEntry('legendary:game-c')).toBe(other)
@@ -133,6 +156,7 @@ test('runner-less done after removal cannot restore a removed game and does not 
     status: 'installing'
   })
   status({} as never, { appName: 'game-c', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).toHaveBeenCalledWith({
     appName: 'game-c',
     runner: 'gog',
@@ -156,8 +180,10 @@ test('same app names in two active stores never assign an ambiguous runner-less 
     status: 'updating'
   })
   status({} as never, { appName: 'game-d', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).not.toHaveBeenCalled()
   status({} as never, { appName: 'game-d', runner: 'gog', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).toHaveBeenCalledTimes(1)
   expect(invalidate).toHaveBeenCalledWith({
     appName: 'game-d',
@@ -182,6 +208,7 @@ test('duplicate updating after clear retains obsolete start provenance until ter
     status: 'updating'
   })
   status({} as never, { appName: 'game-e', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).not.toHaveBeenCalled()
   expect(gameDetailsStore.getEntry('legendary:game-e')).toBeUndefined()
   status({} as never, {
@@ -190,6 +217,7 @@ test('duplicate updating after clear retains obsolete start provenance until ter
     status: 'updating'
   })
   status({} as never, { appName: 'game-e', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).toHaveBeenCalledTimes(1)
   expect(invalidate).toHaveBeenCalledWith({
     appName: 'game-e',
@@ -220,6 +248,7 @@ test('duplicate updating after removal cannot rebind the removed operation to th
     status: 'updating'
   })
   status({} as never, { appName: 'game-f', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).not.toHaveBeenCalled()
   expect(gameDetailsStore.getEntry('legendary:game-f')).toBeUndefined()
   status({} as never, {
@@ -228,9 +257,71 @@ test('duplicate updating after removal cannot rebind the removed operation to th
     status: 'updating'
   })
   status({} as never, { appName: 'game-f', status: 'done' })
+  await Promise.resolve()
   expect(invalidate).toHaveBeenCalledTimes(1)
   expect(gameDetailsStore.getEntry('legendary:game-f')?.pendingInstall).toBe(
     true
   )
   await gameDetailsStore.clearAll()
+})
+
+async function languageCompletion(selectedBeforeCompletion: boolean) {
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: { getItem: () => null }
+  })
+  const t = setup()
+  await t.gameDetailsStore.hydrationReady
+  const gameInfo = {
+    runner: 'gog',
+    app_name: 'language-game',
+    title: 'Synthetic Coast',
+    is_installed: true,
+    install: { platform: 'Windows' }
+  } as import('common/types').GameInfo
+  window.api.getExtraInfo = jest.fn(() =>
+    Promise.resolve({
+      storeUrl: 'https://store.example/language'
+    } as import('common/types').ExtraInfo)
+  )
+  window.api.getAchievements = jest.fn(() => Promise.resolve([]))
+  t.gameDetailsStore.setSlot('gog:language-game', 'extraInfo@en', {
+    storeUrl: 'https://store.example/en'
+  })
+  t.gameDetailsStore.setSlot('gog:language-game', 'achievements', [])
+  t.gameDetailsScheduler.update({ online: true })
+  t.status({} as never, {
+    appName: 'language-game',
+    runner: 'gog',
+    status: 'playing'
+  })
+  t.setLanguage('fr')
+  const french = t.gameDetailsPrefetch.prefetch(gameInfo, 2, true)
+  await Promise.resolve()
+  await Promise.resolve()
+  if (selectedBeforeCompletion)
+    t.gameDetailsScheduler.update({ playing: false })
+  t.status({} as never, {
+    appName: 'language-game',
+    runner: 'gog',
+    status: 'done'
+  })
+  await french
+  expect(window.api.getExtraInfo).toHaveBeenCalledTimes(1)
+  expect(
+    t.gameDetailsStore.getSlot('gog:language-game', 'extraInfo@fr')
+  ).toBeDefined()
+  expect(window.api.invalidateGameDetailsCaches).toHaveBeenCalledWith({
+    appName: 'language-game',
+    runner: 'gog',
+    scope: 'achievements'
+  })
+  t.gameDetailsScheduler.dispose()
+  await t.gameDetailsStore.clearAll()
+}
+test('actual play completion retains queued missing language work', async () => {
+  await languageCompletion(false)
+})
+test('actual play completion retains just-selected missing language work', async () => {
+  await languageCompletion(true)
 })

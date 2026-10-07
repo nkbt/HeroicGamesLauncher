@@ -27,6 +27,8 @@ function setup() {
   const options = {
     getMainWindow: () => ({ webContents: sender as never }),
     rendererEntry: 'https://app.example/',
+    beforeReset: jest.fn(),
+    resetFailed: jest.fn(),
     timeoutMs: 100
   }
   expect(guardResetHeroic(registry as never, warn, options)).toBe(true)
@@ -38,6 +40,7 @@ test('reset waits for the same request and originating window and keeps the orig
   const t = setup()
   t.registry.emit('resetHeroic', t.event, 'argument')
   expect(t.original).not.toHaveBeenCalled()
+  expect(t.options.beforeReset).not.toHaveBeenCalled()
   const requestId = t.sender.send.mock.calls[0][1]
   t.registry.emit(
     'gameDetailsResetReady',
@@ -53,6 +56,8 @@ test('reset waits for the same request and originating window and keeps the orig
   t.registry.emit('gameDetailsResetReady', t.event, requestId, true)
   jest.advanceTimersByTime(100)
   expect(t.original).toHaveBeenCalledTimes(1)
+  expect(t.options.beforeReset).toHaveBeenCalledTimes(1)
+  expect(t.options.resetFailed).not.toHaveBeenCalled()
   expect(t.warn).not.toHaveBeenCalled()
 })
 
@@ -73,6 +78,7 @@ test('failure, timeout and stale acknowledgement cannot run the destructive rese
   const third = t.sender.send.mock.calls[3][1]
   t.registry.emit('gameDetailsResetReady', t.event, second, true)
   expect(t.original).not.toHaveBeenCalled()
+  expect(t.options.beforeReset).not.toHaveBeenCalled()
   t.registry.emit('gameDetailsResetReady', t.event, third, true)
   expect(t.original).toHaveBeenCalledTimes(1)
   expect(t.warn).toHaveBeenCalledTimes(2)
@@ -98,6 +104,8 @@ test('original reset errors retain their event-handler semantics', () => {
   expect(() =>
     t.registry.emit('gameDetailsResetReady', t.event, requestId, true)
   ).toThrow('original failure')
+  expect(t.options.beforeReset).toHaveBeenCalledTimes(1)
+  expect(t.options.resetFailed).toHaveBeenCalledTimes(1)
 })
 
 test('multiple destructive listeners fail closed', () => {
